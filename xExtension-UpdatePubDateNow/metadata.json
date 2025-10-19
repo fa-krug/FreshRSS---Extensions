@@ -1,0 +1,7 @@
+{
+	"name": "UpdateDateToNow",
+	"author": "Sascha Krug",
+	"description": "Sets the publication date of entries to now before insertion. Configurable timezone and per-feed toggles.",
+	"version": "1.2.0",
+	"entrypoint": "UpdateDateToNow"
+}

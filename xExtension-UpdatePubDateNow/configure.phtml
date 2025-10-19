@@ -1,0 +1,46 @@
+<?php
+/** @var UpdateDateToNowExtension $this */
+$timezone = (string)$this->getUserConfigurationValue('timezone', '');
+$enabled = $this->getUserConfigurationValue('enabled_feeds', []);
+if (!is_array($enabled)) {
+	$enabled = [];
+}
+$feedDAO = FreshRSS_Factory::createFeedDao();
+$feeds = $feedDAO->listFeeds(); // array<int, FreshRSS_Feed>
+?>
+<form method="post" action="<?= _url('extension', 'configure', 'e', urlencode($this->getName())) ?>">
+	<input type="hidden" name="_csrf" value="<?= FreshRSS_Auth::csrfToken() ?>" />
+
+	<fieldset>
+		<legend>UpdateDateToNow settings</legend>
+
+		<div class="form-group">
+			<label for="upd-timezone">Timezone (optional)</label>
+			<input id="upd-timezone" class="extend" type="text" name="timezone" value="<?= htmlspecialchars($timezone, ENT_QUOTES, 'UTF-8') ?>" placeholder="e.g. Europe/Berlin or UTC" />
+			<p class="help">Leave empty to use server time. Use a valid PHP timezone identifier.</p>
+		</div>
+
+		<div class="form-group">
+			<label>Enable for feeds</label>
+			<div class="checkboxes-list">
+				<?php foreach ($feeds as $id => $feed): ?>
+					<label style="display:block;">
+						<input type="checkbox" name="enabled_feeds[<?= (int)$id ?>]" value="1" <?= !empty($enabled) && !empty($enabled[$id]) ? 'checked' : '' ?> />
+						<?= htmlspecialchars($feed->name(), ENT_QUOTES, 'UTF-8') ?>
+						<small>(ID <?= (int)$id ?>)</small>
+					</label>
+				<?php endforeach; ?>
+				<?php if (empty($feeds)) : ?>
+					<p class="help">No feeds found.</p>
+				<?php endif; ?>
+				<p class="help">Checked feeds will have their publication date replaced with the current time when new entries are inserted.</p>
+			</div>
+		</div>
+	</fieldset>
+
+	<div class="form-group form-actions">
+		<div class="group-controls">
+			<button class="btn btn-important" type="submit">Save settings</button>
+		</div>
+	</div>
+</form>

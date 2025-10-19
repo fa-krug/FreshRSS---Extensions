@@ -1,0 +1,8 @@
+{
+  "name": "Replacer",
+  "author": "Sascha Krug",
+  "description": "Replace content in feeds using regex patterns with support for URL and title placeholders",
+  "version": "1.0.0",
+  "entrypoint": "Replacer",
+  "type": "user"
+}
