@@ -1,0 +1,7 @@
+{
+	"name": "FixXEmbedding",
+	"author": "Sascha Krug",
+	"description": "Replaces X.com (Twitter) error messages with a simple link. Configurable per-feed toggles.",
+	"version": "1.0.0",
+	"entrypoint": "FixXEmbedding"
+}
