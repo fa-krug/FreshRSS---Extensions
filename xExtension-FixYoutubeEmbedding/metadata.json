@@ -1,0 +1,7 @@
+{
+	"name": "FixYoutubeEmbedding",
+	"author": "Sascha Krug",
+	"description": "Replaces YouTube iframe embeds with thumbnail images. Configurable per-feed toggles.",
+	"version": "1.0.0",
+	"entrypoint": "FixYoutubeEmbedding"
+}
