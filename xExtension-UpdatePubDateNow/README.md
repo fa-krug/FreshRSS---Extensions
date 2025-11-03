@@ -1,38 +1,110 @@
-# UpdateDateToNow (FreshRSS extension)
+# UpdateDateToNow Extension for FreshRSS
 
-Sets the publication date of incoming entries to “now” just before insertion.
+## Overview
 
-This version adds:
-- User-configurable timezone for the "now" value.
-- Per‑feed control with a full list of feeds and a toggle for each to decide which feeds can have their dates replaced.
+UpdateDateToNow is a FreshRSS extension that automatically sets the publication date of new entries to the current time (now) when they're added to your feed. This is useful for feeds that have incorrect timestamps or when you want entries to appear at the top of your feed based on when they arrived, not when they were originally published.
+
+## Features
+
+- **Automatic date updating**: Sets entry dates to "now" before they're stored
+- **Timezone support**: Configure a custom timezone for date calculation
+- **Per-feed configuration**: Enable or disable for specific feeds
+- **Backward compatibility**: Supports legacy configuration from older versions
 
 ## Installation
 
-1. Place this folder inside your FreshRSS `extensions/` directory as `UpdatePubDateNow`.
-2. Enable the extension from FreshRSS: Administration → Extensions.
+1. Download or clone this extension into your FreshRSS extensions directory:
+   ```
+   ./extensions/xExtension-UpdatePubDateNow/
+   ```
+
+2. In FreshRSS, navigate to **Settings → Extensions**
+
+3. Enable the **UpdateDateToNow** extension
+
+4. Click the **⚙️ Configure** button to set up your preferences
 
 ## Configuration
 
-Open Administration → Extensions → UpdateDateToNow.
+After enabling the extension:
 
-Settings available:
-- Timezone: Optional PHP timezone identifier (e.g., `Europe/Berlin`, `UTC`). If empty, server time is used. The timestamp is set without changing PHP’s global default timezone.
-- Enable for feeds: A list of all your feeds with a checkbox for each. Checked feeds will have their dates replaced; unchecked feeds will keep their original dates.
+1. Go to the extension's configuration page
+2. **(Optional)** Set a timezone (e.g., `America/New_York`, `Europe/Berlin`, `Asia/Tokyo`)
+   - If left empty, uses the server's timezone
+   - See [List of Supported Timezones](https://www.php.net/manual/en/timezones.php)
+3. Check the boxes next to the feeds where you want to update dates
+4. Save your settings
 
-## How it works
+The extension will only process entries from the feeds you've selected.
 
-- The extension hooks into `entry_before_insert` and replaces the entry’s publication date with the current timestamp.
-- If a timezone is configured, it computes the current time for that timezone; otherwise it uses the server time.
-- If a feed is checked in the configuration, new entries from that feed will get their date replaced; others will not.
+## Use Cases
 
-## Notes
+### Use Case 1: Broken Feed Timestamps
+Some feeds publish entries with incorrect or inconsistent timestamps. This extension ensures they appear in chronological order based on when they arrived.
 
-- If you previously used the older “only listed IDs” mode, it will continue to work until you save the new configuration. Once you save, the new per‑feed toggles are used.
-- Unix timestamps are absolute; timezone affects how the “current time” is computed, but the stored timestamp remains comparable across timezones.
-- If you enter an invalid timezone, the extension falls back to the server time silently.
+### Use Case 2: RSS-to-Email Services
+When subscribing to email newsletters via RSS, you want them to appear at the top of your feed when they arrive, not buried based on their original publish date.
 
-## Version history
+### Use Case 3: News Aggregation
+For certain news feeds where you care more about when the article appeared in your feed rather than its original publication time.
 
-- 1.2.0: Configuration now lists all feeds with a per‑feed toggle.
-- 1.1.0: Timezone and per‑feed configuration; README added.
-- 1.0.0: Initial release, always set date to now.
+### Use Case 4: Podcast Feeds
+Some podcast feeds have inaccurate publish dates. This extension helps keep your podcast episodes in the order they were discovered.
+
+## How It Works
+
+When a new entry is added to FreshRSS:
+
+1. The extension checks if the entry is from an enabled feed
+2. It calculates the current timestamp using your configured timezone (or server time)
+3. It updates the entry's publication date to this "now" timestamp
+4. The entry is then stored with the new date
+
+## Requirements
+
+- FreshRSS 1.20.0 or higher
+- PHP 7.4 or higher
+
+## Technical Details
+
+- **Hook**: Uses `entry_before_insert` to process entries before they're stored
+- **Timezone handling**: Uses PHP's `DateTime` and `DateTimeZone` classes
+- **Fallback behavior**: If an invalid timezone is provided, falls back to server time
+- **Backward compatibility**: Supports old `mode` and `feed_ids` configuration format
+
+## Timezone Examples
+
+Valid timezone strings include:
+- `UTC`
+- `America/New_York`
+- `Europe/London`
+- `Europe/Berlin`
+- `Asia/Tokyo`
+- `Australia/Sydney`
+
+For a complete list, see [PHP's supported timezones](https://www.php.net/manual/en/timezones.php).
+
+## Upgrade Notes
+
+If you're upgrading from version 1.1.x or earlier:
+- The old `mode` and `feed_ids` configuration is still supported
+- New installations should use the per-feed checkbox configuration
+- Old configurations will continue to work until you save new settings
+
+## License
+
+MIT License - see LICENSE file for details
+
+## Author
+
+Sascha Krug
+
+## Version
+
+1.2.0
+
+## Version History
+
+- **1.2.0**: Added per-feed toggle configuration
+- **1.1.x**: Added timezone support and mode selection
+- **1.0.0**: Initial release
