@@ -1,51 +1,108 @@
-# Replacer (FreshRSS extension)
+# Replacer Extension for FreshRSS
 
-Replace parts of incoming entry content using per‑feed regular expressions, with handy placeholders for the entry URL and feed information.
+## Overview
 
-This version adds:
-- Per‑feed configuration of a regex search pattern and a replacement string.
-- Placeholders in the replacement string: `{url}`, `{feed_url}`, `{title}`.
+Replacer is a powerful FreshRSS extension that allows you to modify feed entry content using regular expressions. You can configure multiple replacement rules per feed with support for dynamic placeholders like URLs, feed titles, and more.
+
+## Features
+
+- **Regex-based replacements**: Use powerful regular expressions to find and replace content
+- **Multiple rules per feed**: Apply several replacement rules to each feed in sequence
+- **Dynamic placeholders**: Insert dynamic content using `{url}`, `{feed_url}`, and `{title}` placeholders
+- **Per-feed configuration**: Different replacement rules for different feeds
+- **Content-only modification**: Only modifies entry content, not titles
 
 ## Installation
 
-1. Place this folder inside your FreshRSS `extensions/` directory as `Replacer`.
-2. Enable the extension from FreshRSS: Administration → Extensions.
+1. Download or clone this extension into your FreshRSS extensions directory:
+   ```
+   ./extensions/xExtension-Replacer/
+   ```
+
+2. In FreshRSS, navigate to **Settings → Extensions**
+
+3. Enable the **Replacer** extension
+
+4. Click the **⚙️ Configure** button to set up your replacement rules
 
 ## Configuration
 
-Open Administration → Extensions → Replacer.
+After enabling the extension:
 
-For each of your feeds you can set:
-- Search Regex Pattern: A PHP regex with delimiters, e.g. `#pattern#` or `/pattern/i`.
-- Replace String: The text to insert for the first match found in the entry content.
+1. Go to the extension's configuration page
+2. For each feed where you want to apply replacements:
+   - Add one or more replacement rules
+   - Enter a **search regex** pattern (e.g., `/old-text/i`)
+   - Enter a **replacement string** (e.g., `new-text` or use placeholders)
+3. Use the **Add Rule** button to add multiple rules to a feed
+4. Save your settings
 
-Available placeholders in the Replace String:
-- `{url}`: The URL of the article (entry link)
-- `{feed_url}`: The URL of the feed
-- `{title}`: The title of the feed
+### Available Placeholders
 
-Regex pattern tips:
-- Include delimiters, e.g. `#...#` or `/.../`.
-- Add flags after the closing delimiter, e.g. `i` for case‑insensitive: `#pattern#i`.
+You can use these placeholders in your replacement strings:
 
-## How it works
+- `{url}` - The entry's URL (article link)
+- `{feed_url}` - The feed's URL
+- `{title}` - The feed's title/name
 
-- The extension hooks into `entry_before_insert`.
-- For each new entry, it looks up the configuration for the entry’s feed.
-- If a valid regex pattern and a replacement string are configured, the regex is applied to the entry’s content only (titles/subtitles are not changed).
-- Only the first match per entry is replaced.
-- Before applying, the replacement string is HTML‑entity decoded, then placeholders are expanded:
-  - `{url}` → the entry’s link
-  - `{feed_url}` → the feed’s URL
-  - `{title}` → the feed’s title
-- If the regex pattern is invalid, the entry is left unchanged and an error is logged.
+## Examples
 
-## Notes
+### Example 1: Simple Text Replacement
+- **Search Regex**: `/advertisement/i`
+- **Replace String**: `[sponsored content]`
 
-- Leave either field empty to disable replacement for a feed.
-- Make sure your regex includes delimiters (e.g., `#` or `/`).
-- Only entry content is modified; entry titles are never altered.
+### Example 2: Remove Tracking Parameters
+- **Search Regex**: `/\?utm_[^"'\s]*/`
+- **Replace String**: `` (empty)
 
-## Version history
+### Example 3: Add Link to Original
+- **Search Regex**: `/(Article continues\.\.\.)/`
+- **Replace String**: `$1 <a href="{url}">Read full article</a>`
 
-- 1.0.0: Initial release with per‑feed regex replacement and placeholders.
+### Example 4: Replace Image Sources
+- **Search Regex**: `/<img src="\/images\//`
+- **Replace String**: `<img src="{feed_url}/images/`
+
+## How It Works
+
+When a new entry is added to FreshRSS:
+
+1. The extension checks if replacement rules are configured for the entry's feed
+2. It applies each rule in sequence to the entry content
+3. For each rule:
+   - Validates the regex pattern
+   - Replaces placeholders with actual values
+   - Applies the regex replacement to the content
+4. The modified content is saved to the database
+
+## Requirements
+
+- FreshRSS 1.20.0 or higher
+- PHP 7.4 or higher
+- Basic knowledge of regular expressions for advanced usage
+
+## Technical Details
+
+- **Hook**: Uses `entry_before_insert` to process entries before they're stored
+- **Scope**: Only modifies entry content, not titles or other metadata
+- **Rule order**: Rules are applied in the order they're defined
+- **Error handling**: Invalid regex patterns are logged and skipped
+
+## Regex Tips
+
+- Use delimiters: `/pattern/` or `#pattern#`
+- Common flags: `i` (case-insensitive), `m` (multiline), `s` (dotall)
+- Test your regex patterns before using them
+- Remember to escape special characters: `\.` `\?` `\*` etc.
+
+## License
+
+MIT License - see LICENSE file for details
+
+## Author
+
+Sascha Krug
+
+## Version
+
+1.0.0

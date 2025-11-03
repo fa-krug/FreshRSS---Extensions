@@ -7,35 +7,26 @@ $feeds = $feedDAO->listFeeds();
 ?>
 
 <form action="<?php echo _url('extension', 'configure', 'e', urlencode($this->getName())); ?>" method="post">
-    <input type="hidden" name="_csrf" value="<?php echo FreshRSS_Auth::csrfToken(); ?>" />
-
-    <div class="form-group">
-        <div class="group-controls">
-            <h3>Available Placeholders</h3>
-            <ul>
-                <li><strong>{url}:</strong> The URL of the article (entry link)</li>
-                <li><strong>{feed_url}:</strong> The URL of the feed</li>
-                <li><strong>{title}:</strong> The title of the feed</li>
-            </ul>
-        </div>
-    </div>
-
-    <div class="form-group">
-        <div class="group-controls">
-            <h3>Regex Pattern Examples</h3>
-            <ul>
-                <li><code>#pattern#</code> - Basic pattern with # delimiter</li>
-                <li><code>#pattern#i</code> - Case-insensitive pattern (i flag)</li>
-                <li><code>/pattern/</code> - Pattern with / delimiter</li>
-            </ul>
-        </div>
-    </div>
-
-    <div class="form-group">
-        <div class="group-controls">
-            <h3>Important Note</h3>
-            <p>Replacements are applied ONLY to entry content, not to titles or subtitles</p>
-        </div>
+    <input type="hidden" name="_csrf" value="<?php echo FreshRSS_Auth::csrfToken(); ?>"/>
+    <div class="post">
+        <h3>Available Placeholders</h3>
+        <ul>
+            <li><strong>{url}:</strong> The URL of the article (entry link)</li>
+            <li><strong>{feed_url}:</strong> The URL of the feed</li>
+            <li><strong>{title}:</strong> The title of the feed</li>
+        </ul>
+        <br/>
+        <h3>Regex Pattern Examples</h3>
+        <ul>
+            <li><code>#pattern#</code> - Basic pattern with # delimiter</li>
+            <li><code>#pattern#i</code> - Case-insensitive pattern (i flag)</li>
+            <li><code>/pattern/</code> - Pattern with / delimiter</li>
+        </ul>
+        <br/>
+        <h3>Important Notes</h3>
+        <ul>
+            <li>Replacements are applied ONLY to entry content, not to titles or subtitles</li>
+        </ul>
     </div>
 
     <?php if (empty($feeds)): ?>
@@ -48,31 +39,66 @@ $feeds = $feedDAO->listFeeds();
         <?php foreach ($feeds as $feed): ?>
             <?php
             $feedId = $feed->id();
-            $config = $replacements[$feedId] ?? array();
-            $searchRegex = $config["search_regex"] ?? '';
-            $replaceString = $config["replace_string"] ?? '';
-            // Decode HTML entities for display
-            $replaceStringDisplay = html_entity_decode($replaceString, ENT_QUOTES, 'UTF-8');
+            $rules = $replacements[$feedId] ?? array();
+
+            // Handle old format (single rule)
+            if (isset($rules["search_regex"])) {
+                $rules = array($rules);
+            }
+
+            // Ensure at least one empty rule exists
+            if (empty($rules)) {
+                $rules = array(array("search_regex" => "", "replace_string" => ""));
+            }
             ?>
 
-            <fieldset class="form-group">
+            <fieldset class="form-group feed-rules post" data-feed-id="<?php echo $feedId; ?>">
                 <legend><?php echo htmlspecialchars($feed->name()); ?></legend>
 
                 <input type="hidden" name="feed_ids[]" value="<?php echo $feedId; ?>">
 
-                <div class="form-group">
-                    <label class="group-name" for="replacer_search_regex_<?php echo $feedId; ?>">Search Regex Pattern</label>
-                    <div class="group-controls">
-                        <input type="text" name="replacer_search_regex_<?php echo $feedId; ?>" id="replacer_search_regex_<?php echo $feedId; ?>" value="<?php echo $searchRegex; ?>" placeholder="e.g., #pattern#i">
-                    </div>
+                <div class="rules-container" id="rules_container_<?php echo $feedId; ?>">
+                    <?php foreach ($rules as $index => $rule): ?>
+                        <?php
+                        $searchRegex = $rule["search_regex"] ?? '';
+                        $replaceString = $rule["replace_string"] ?? '';
+                        $replaceStringDisplay = html_entity_decode($replaceString, ENT_QUOTES, 'UTF-8');
+                        ?>
+                        <div class="rule-item">
+                            <div class="header">
+                                <span class="item rule-number">Rule <?php echo $index + 1; ?></span>
+                                <span class="item"></span>
+                                <span class="item"></span>
+                                <div class="item">
+                                    <button type="button" class="btn btn-attention confirm btn-remove-rule">Remove
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="post">
+                                <div class="form-group">
+                                    <label class="group-name">Search Regex Pattern</label>
+                                    <div class="group-controls">
+                                        <input type="text" name="replacer_search_regex_<?php echo $feedId; ?>[]"
+                                               value="<?php echo htmlspecialchars($searchRegex); ?>"
+                                               placeholder="e.g., #pattern#i">
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label class="group-name">Replace String</label>
+                                    <div class="group-controls">
+                                        <textarea name="replacer_replace_string_<?php echo $feedId; ?>[]"
+                                                  placeholder="e.g., replacement text"><?php echo htmlspecialchars($replaceStringDisplay); ?></textarea>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
                 </div>
 
-                <div class="form-group">
-                    <label class="group-name" for="replacer_replace_string_<?php echo $feedId; ?>">Replace String</label>
-                    <div class="group-controls">
-                        <textarea name="replacer_replace_string_<?php echo $feedId; ?>" id="replacer_replace_string_<?php echo $feedId; ?>" placeholder="e.g., replacement text"><?php echo $replaceStringDisplay; ?></textarea>
-                    </div>
-                </div>
+                <button type="button" class="btn btn-important btn-add-rule" data-feed-id="<?php echo $feedId; ?>">+ Add
+                    Rule
+                </button>
             </fieldset>
         <?php endforeach; ?>
     <?php endif; ?>
@@ -84,24 +110,3 @@ $feeds = $feedDAO->listFeeds();
         </div>
     </div>
 </form>
-
-<style>
-    fieldset.form-group {
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        padding: 15px;
-        margin-bottom: 20px;
-    }
-
-    fieldset.form-group legend {
-        padding: 0 10px;
-        font-weight: bold;
-        margin-left: -10px;
-    }
-
-    textarea {
-        width: 100%;
-        min-height: 60px;
-        font-family: monospace;
-    }
-</style>
