@@ -12,6 +12,9 @@ class ReplacerExtension extends Minz_Extension {
         self::$feedId = '';
         $this->registerHook('entry_before_insert', array('ReplacerExtension', 'applyReplacementsToEntry'));
 
+        // Register our controller
+        $this->registerController('replacer');
+
         // Load CSS and JS for configuration page
         if (Minz_Request::controllerName() === 'extension') {
             Minz_View::appendScript($this->getFileUrl('configure.js'));
@@ -34,8 +37,17 @@ class ReplacerExtension extends Minz_Extension {
                 if (is_array($regexPatterns) && is_array($replaceStrings)) {
                     foreach ($regexPatterns as $index => $pattern) {
                         $replacement = $replaceStrings[$index] ?? '';
+
+                        // Decode URL-encoded values coming from the POST (some clients encode them)
+                        $pattern = urldecode($pattern);
+                        $replacement = urldecode($replacement);
+
+                        // Decode HTML entities (e.g. &lt; &gt;) so patterns like `<header>` are stored correctly
+                        $pattern = html_entity_decode($pattern, ENT_QUOTES, 'UTF-8');
+                        $replacement = html_entity_decode($replacement, ENT_QUOTES, 'UTF-8');
+
                         // Only add rules that have at least a pattern
-                        if ($pattern !== '') {
+                        if (trim($pattern) !== '') {
                             $rules[] = array(
                                 'search_regex' => $pattern,
                                 'replace_string' => $replacement
@@ -117,7 +129,7 @@ class ReplacerExtension extends Minz_Extension {
                         // Apply the replacement
                         $newContent = preg_replace($searchRegex, $replaceString, $newContent);
                     }
-
+                    
                     $entry->_content($newContent);
                 }
             }
