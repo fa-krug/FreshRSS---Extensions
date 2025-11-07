@@ -57,13 +57,44 @@
         });
     }
 
-    // Handle "Add Rule" button clicks
-    document.addEventListener('click', function (e) {
-        if (e.target.classList.contains('btn-add-rule')) {
-            var feedId = e.target.getAttribute('data-feed-id');
-            addRule(feedId);
+
+  // Handle "Add Rule" button clicks
+  document.addEventListener('click', function (e) {
+    if (e.target.classList.contains('btn-add-rule')) {
+      var feedId = e.target.getAttribute('data-feed-id');
+      addRule(feedId);
+    }
+    // Handle "Reload Feed" button clicks
+    if (e.target.classList.contains('btn-reload-feed')) {
+      var feedId = e.target.getAttribute('data-feed-id');
+      reloadFeedBackend(feedId, e.target);
+    }
+  });
+
+  // Reload Feed: call backend to truncate and reload feed
+  function reloadFeedBackend(feedId, button) {
+    if (!confirm('Are you sure you want to delete all entries and reload this feed?')) return;
+    button.disabled = true;
+    const csrf = document.querySelector('input[name="_csrf"]').value;
+    fetch(window.location.pathname + '?c=replacer&a=reload&feed_id=' + encodeURIComponent(feedId), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'feed_id=' + encodeURIComponent(feedId) + '&_csrf=' + encodeURIComponent(csrf)
+    })
+      .then(function (response) { return response.json(); })
+      .then(function (data) {
+        button.disabled = false;
+        if (data.success) {
+          window.location.replace('/');
+        } else {
+          alert('Error: ' + (data.error || 'Failed to reload feed.'));
         }
-    });
+      })
+      .catch(function (err) {
+        button.disabled = false;
+        alert('Error: ' + err);
+      });
+  }
 
     // Handle "Remove" button clicks
     document.addEventListener('click', function (e) {

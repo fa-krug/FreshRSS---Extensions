@@ -81,7 +81,7 @@ $feeds = $feedDAO->listFeeds();
                                     <div class="group-controls">
                                         <input type="text" name="replacer_search_regex_<?php echo $feedId; ?>[]"
                                             value="<?php echo htmlspecialchars($searchRegexDisplay); ?>"
-                                               placeholder="e.g., #pattern#i">
+                                            placeholder="e.g., #pattern#i">
                                     </div>
                                 </div>
 
@@ -89,7 +89,7 @@ $feeds = $feedDAO->listFeeds();
                                     <label class="group-name">Replace String</label>
                                     <div class="group-controls">
                                         <textarea name="replacer_replace_string_<?php echo $feedId; ?>[]"
-                                                  placeholder="e.g., replacement text"><?php echo htmlspecialchars($replaceStringDisplay); ?></textarea>
+                                            placeholder="e.g., replacement text"><?php echo htmlspecialchars($replaceStringDisplay); ?></textarea>
                                     </div>
                                 </div>
                             </div>
@@ -97,9 +97,8 @@ $feeds = $feedDAO->listFeeds();
                     <?php endforeach; ?>
                 </div>
 
-                <button type="button" class="btn btn-important btn-add-rule" data-feed-id="<?php echo $feedId; ?>">+ Add
-                    Rule
-                </button>
+                <button type="button" class="btn btn-important btn-add-rule" data-feed-id="<?php echo $feedId; ?>">+ Add Rule</button>
+                <button type="button" class="btn btn-attention btn-reload-feed" data-feed-id="<?php echo $feedId; ?>">Reload Feed</button>
             </fieldset>
         <?php endforeach; ?>
     <?php endif; ?>
