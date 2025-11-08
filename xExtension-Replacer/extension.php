@@ -127,10 +127,10 @@ class ReplacerExtension extends Minz_Extension {
                         $replaceString = str_replace('{title}', self::$feedTitle, $replaceString);
 
                         // Apply the replacement
-                        FreshRSS_Log::info('Replacing');
-                        FreshRSS_Log::info('Content: ' . $newContent);
-                        FreshRSS_Log::info('Search: ' . $searchRegex);
-                        FreshRSS_Log::info('Replace: ' . $replaceString);
+                        error_log('Replacing');
+                        error_log('Content: ' . $newContent);
+                        error_log('Search: ' . $searchRegex);
+                        error_log('Replace: ' . $replaceString);
                         $newContent = preg_replace($searchRegex, $replaceString, $newContent);
                     }
                     
