@@ -127,6 +127,10 @@ class ReplacerExtension extends Minz_Extension {
                         $replaceString = str_replace('{title}', self::$feedTitle, $replaceString);
 
                         // Apply the replacement
+                        Minz_Log::info('Replacing');
+                        Minz_Log::info('Content: ' . $newContent);
+                        Minz_Log::info('Search: ' . $searchRegex);
+                        Minz_Log::info('Replace: ' . $replaceString);
                         $newContent = preg_replace($searchRegex, $replaceString, $newContent);
                     }
                     
