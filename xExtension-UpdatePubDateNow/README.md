@@ -10,6 +10,7 @@ UpdateDateToNow is a FreshRSS extension that automatically sets the publication 
 - **Timezone support**: Configure a custom timezone for date calculation
 - **Per-feed configuration**: Enable or disable for specific feeds
 - **Backward compatibility**: Supports legacy configuration from older versions
+- **Comprehensive Logging**: Detailed logging for debugging timezone handling and date updates
 
 ## Installation
 
@@ -71,6 +72,8 @@ When a new entry is added to FreshRSS:
 - **Timezone handling**: Uses PHP's `DateTime` and `DateTimeZone` classes
 - **Fallback behavior**: If an invalid timezone is provided, falls back to server time
 - **Backward compatibility**: Supports old `mode` and `feed_ids` configuration format
+- **Logging**: Logs date updates with original and new timestamps for tracking
+- **Code Quality**: Includes comprehensive inline documentation and error handling
 
 ## Timezone Examples
 

@@ -10,6 +10,7 @@ FixXEmbedding is a FreshRSS extension that automatically replaces X.com (Twitter
 - **Media Embedding**: Fetches and embeds images from X.com posts using the fxtwitter.com API
 - **Per-Feed Configuration**: Enable or disable the extension for specific feeds
 - **Fallback Support**: Provides a simple link if media cannot be retrieved
+- **Comprehensive Logging**: Detailed logging for debugging and monitoring API requests and replacements
 
 ## Installation
 
@@ -55,6 +56,8 @@ When a new entry is added to FreshRSS:
 - **API Endpoint**: `https://api.fxtwitter.com/status/{tweetId}`
 - **Timeout**: 5 seconds for API requests
 - **Hook**: Uses `entry_before_insert` to process entries before they're stored
+- **Logging**: Logs API requests, successful replacements, and error conditions for easier troubleshooting
+- **Code Quality**: Includes comprehensive inline documentation and error handling
 
 ## License
 

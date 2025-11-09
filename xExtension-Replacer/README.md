@@ -11,6 +11,7 @@ Replacer is a powerful FreshRSS extension that allows you to modify feed entry c
 - **Dynamic placeholders**: Insert dynamic content using `{url}`, `{feed_url}`, and `{title}` placeholders
 - **Per-feed configuration**: Different replacement rules for different feeds
 - **Content-only modification**: Only modifies entry content, not titles
+- **Comprehensive Logging**: Detailed logging for debugging regex patterns and tracking replacements
 
 ## Installation
 
@@ -87,6 +88,8 @@ When a new entry is added to FreshRSS:
 - **Scope**: Only modifies entry content, not titles or other metadata
 - **Rule order**: Rules are applied in the order they're defined
 - **Error handling**: Invalid regex patterns are logged and skipped
+- **Logging**: Logs each replacement operation with details about patterns, matches, and results
+- **Code Quality**: Includes comprehensive inline documentation and validation
 
 ## Regex Tips
 

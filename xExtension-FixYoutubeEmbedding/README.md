@@ -11,6 +11,7 @@ FixYoutubeEmbedding is a FreshRSS extension that replaces YouTube iframe embeds 
 - **Clickable links**: Thumbnails link directly to the YouTube video
 - **Per-Feed Configuration**: Enable or disable the extension for specific feeds
 - **Supports multiple YouTube domains**: Works with both youtube.com and youtube-nocookie.com embeds
+- **Comprehensive Logging**: Detailed logging for debugging and monitoring iframe replacements
 
 ## Installation
 
@@ -70,6 +71,8 @@ When a new entry is added to FreshRSS:
 - **Hook**: Uses `entry_before_insert` to process entries before they're stored
 - **Pattern matching**: Supports both `youtube.com/embed/` and `youtube-nocookie.com/embed/` URLs
 - **Video ID format**: Matches standard 11-character YouTube video IDs
+- **Logging**: Logs iframe replacements and processing details for easier troubleshooting
+- **Code Quality**: Includes comprehensive inline documentation and error handling
 
 ## License
 

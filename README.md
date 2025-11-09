@@ -36,7 +36,8 @@ Refer to each extension’s README for configuration details.
 
 ## Development
 
-- Each extension is self‑contained and follows FreshRSS’s extension structure: metadata.json, extension.php, optional configure.phtml.
+- Each extension is self‑contained and follows FreshRSS's extension structure: metadata.json, extension.php, optional configure.phtml.
+- All extensions include comprehensive inline documentation and detailed logging for easier debugging and maintenance.
 - Contributions and suggestions are welcome. Feel free to open a pull request or issue.
 
 ## License
