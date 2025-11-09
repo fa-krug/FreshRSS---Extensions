@@ -1,33 +1,66 @@
 <?php
+
+/**
+ * ReplacerExtension - Replace content in RSS feeds using regex patterns
+ *
+ * This extension allows users to define regex-based find-and-replace rules
+ * on a per-feed basis. Rules are applied sequentially to entry content before
+ * insertion into the database. Supports dynamic placeholders like {url}, {feed_url}, and {title}.
+ */
 class ReplacerExtension extends Minz_Extension {
+    /** @var string The URL of the feed being processed */
     public static $feedUrl = '';
+
+    /** @var string The title/name of the feed being processed */
     public static $feedTitle = '';
+
+    /** @var string The URL of the entry/article being processed */
     public static $entryUrl = '';
+
+    /** @var string The ID of the feed being processed */
     public static $feedId = '';
 
+    /**
+     * Initialize the extension
+     * Registers hooks and controllers, loads assets for configuration page
+     *
+     * @return void
+     */
     public function init() {
+        // Initialize static properties
         self::$feedUrl = '';
         self::$feedTitle = '';
         self::$entryUrl = '';
         self::$feedId = '';
+
+        // Register hook to process entries before they are inserted into the database
         $this->registerHook('entry_before_insert', array('ReplacerExtension', 'applyReplacementsToEntry'));
 
-        // Register our controller
+        // Register our custom controller for AJAX operations (feed reload)
         $this->registerController('replacer');
 
-        // Load CSS and JS for configuration page
+        // Load JavaScript for configuration page UI (add/remove rules, feed reload)
         if (Minz_Request::controllerName() === 'extension') {
             Minz_View::appendScript($this->getFileUrl('configure.js'));
         }
+
+        Minz_Log::notice('Replacer extension initialized');
     }
 
+    /**
+     * Handle configuration form submission
+     * Processes and saves replacement rules for all feeds
+     *
+     * @return void
+     */
     public function handleConfigureAction() {
         if (Minz_Request::isPost()) {
             $data = array();
             $data['replacements'] = array();
 
-            // Get all feed IDs from POST data
+            // Get all feed IDs from POST data (submitted as hidden inputs)
             $feedIds = Minz_Request::param('feed_ids', array());
+            Minz_Log::notice('Replacer: Processing configuration for ' . count($feedIds) . ' feeds');
 
             foreach ($feedIds as $feedId) {
                 $regexPatterns = Minz_Request::param('replacer_search_regex_' . $feedId, array());
@@ -46,7 +79,7 @@ class ReplacerExtension extends Minz_Extension {
                         $pattern = html_entity_decode($pattern, ENT_QUOTES, 'UTF-8');
                         $replacement = html_entity_decode($replacement, ENT_QUOTES, 'UTF-8');
 
-                        // Only add rules that have at least a pattern
+                        // Only add rules that have at least a pattern (replacement can be empty for deletion)
                         if (trim($pattern) !== '') {
                             $rules[] = array(
                                 'search_regex' => $pattern,
@@ -58,39 +91,54 @@ class ReplacerExtension extends Minz_Extension {
 
                 if (!empty($rules)) {
                     $data['replacements'][$feedId] = $rules;
+                    Minz_Log::notice('Replacer: Saved ' . count($rules) . ' rule(s) for feed ID ' . $feedId);
                 }
             }
 
             FreshRSS_Context::$user_conf->replacer = $data;
             FreshRSS_Context::$user_conf->save();
+
+            $totalRules = array_sum(array_map('count', $data['replacements']));
+            Minz_Log::notice('Replacer: Configuration saved successfully with ' . $totalRules . ' total rules across ' . count($data['replacements']) . ' feeds');
         }
     }
 
+    /**
+     * Hook callback: Apply replacement rules to entry content before database insertion
+     *
+     * This method is called for every new entry before it's saved to the database.
+     * It applies all configured replacement rules for the entry's feed in sequential order.
+     * Supports dynamic placeholders: {url}, {feed_url}, {title}
+     *
+     * @param FreshRSS_Entry $entry The entry object to process
+     * @return FreshRSS_Entry The modified entry object
+     */
     public static function applyReplacementsToEntry($entry) {
         try {
             if (is_object($entry) === true) {
-                // Get feed ID from entry
+                // Extract feed metadata from entry object
                 if (method_exists($entry, 'feed') && is_object($entry->feed())) {
                     self::$feedId = $entry->feed()->id();
                     self::$feedUrl = $entry->feed()->url();
                     self::$feedTitle = $entry->feed()->name();
                 }
 
-                // Get entry URL (article link)
+                // Get entry URL (article link) for placeholder replacement
                 if (method_exists($entry, 'link')) {
                     self::$entryUrl = $entry->link();
                 }
 
-                // Get replacement config for this feed
+                // Get replacement configuration for this feed
                 $replacements = FreshRSS_Context::$user_conf->replacer["replacements"] ?? array();
 
+                // Skip processing if no rules configured for this feed
                 if (!isset($replacements[self::$feedId])) {
                     return $entry;
                 }
 
                 $rules = $replacements[self::$feedId];
 
-                // If old format (single rule), convert to array
+                // Backward compatibility: convert old single-rule format to array
                 if (isset($rules["search_regex"])) {
                     $rules = array($rules);
                 }
@@ -99,12 +147,13 @@ class ReplacerExtension extends Minz_Extension {
                     return $entry;
                 }
 
-                // Process ONLY entry content, NOT title
+                // Process ONLY entry content, NOT title (to preserve original titles in UI)
                 if (method_exists($entry, 'content')) {
                     $newContent = $entry->content();
+                    $rulesApplied = 0;
 
-                    // Apply each rule in order
-                    foreach ($rules as $rule) {
+                    // Apply each rule in sequential order (order matters for chained replacements)
+                    foreach ($rules as $ruleIndex => $rule) {
                         $searchRegex = $rule["search_regex"] ?? '';
                         $replaceString = $rule["replace_string"] ?? '';
 
@@ -112,32 +161,43 @@ class ReplacerExtension extends Minz_Extension {
                             continue;
                         }
 
-                        // Validate regex pattern
+                        // Validate regex pattern syntax before applying
                         if (@preg_match($searchRegex, '') === false) {
-                            Minz_Log::error('Replacer: Invalid regex pattern for feed ' . self::$feedId . ': ' . $searchRegex);
+                            Minz_Log::error('Replacer: Invalid regex pattern for feed ' . self::$feedId . ' (rule #' . ($ruleIndex + 1) . '): ' . $searchRegex);
                             continue;
                         }
 
-                        // Decode HTML entities from stored string
+                        // Decode HTML entities from stored replacement string
                         $replaceString = html_entity_decode($replaceString, ENT_QUOTES, 'UTF-8');
 
-                        // Replace placeholders
+                        // Replace dynamic placeholders with actual values
                         $replaceString = str_replace('{url}', self::$entryUrl, $replaceString);
                         $replaceString = str_replace('{feed_url}', self::$feedUrl, $replaceString);
                         $replaceString = str_replace('{title}', self::$feedTitle, $replaceString);
 
-                        // Apply the replacement
+                        // Apply the regex replacement to content
+                        $contentBefore = $newContent;
                         $newContent = preg_replace($searchRegex, $replaceString, $newContent);
+
+                        // Track if this rule actually changed the content
+                        if ($contentBefore !== $newContent) {
+                            $rulesApplied++;
+                        }
                     }
-                    
-                    $entry->_content($newContent);
+
+                    // Update entry content if any rules were applied
+                    if ($rulesApplied > 0) {
+                        $entry->_content($newContent);
+                        Minz_Log::notice('Replacer: Applied ' . $rulesApplied . ' rule(s) to entry from feed ' . self::$feedId);
+                    }
                 }
             }
             return $entry;
         } catch (Exception $e) {
-            Minz_Log::error('Replacer: ' . $e->getMessage());
+            Minz_Log::error('Replacer: Unexpected error in applyReplacementsToEntry - ' . $e->getMessage());
             return $entry;
         }
     }
+
 
 }
