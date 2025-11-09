@@ -11,6 +11,9 @@ Replacer is a powerful FreshRSS extension that allows you to modify feed entry c
 - **Dynamic placeholders**: Insert dynamic content using `{url}`, `{feed_url}`, and `{title}` placeholders
 - **Per-feed configuration**: Different replacement rules for different feeds
 - **Content-only modification**: Only modifies entry content, not titles
+- **Dynamic UI**: Add and remove rules on the fly without page reloads
+- **Feed reload functionality**: Re-apply new rules to existing entries by reloading the feed
+- **Error handling**: Invalid regex patterns are logged and skipped automatically
 
 ## Installation
 
@@ -34,8 +37,20 @@ After enabling the extension:
    - Add one or more replacement rules
    - Enter a **search regex** pattern (e.g., `/old-text/i`)
    - Enter a **replacement string** (e.g., `new-text` or use placeholders)
-3. Use the **Add Rule** button to add multiple rules to a feed
-4. Save your settings
+3. Use the **+ Add Rule** button to dynamically add multiple rules to a feed
+4. Use the **Remove** button to delete individual rules
+5. Use the **Reload Feed** button to re-apply rules to existing entries (see below)
+6. Save your settings
+
+### Reload Feed Feature
+
+When you modify replacement rules, they only apply to new entries by default. To apply the new rules to existing entries:
+
+1. Click the **Reload Feed** button for the feed
+2. Confirm the action (this will delete all entries from that feed)
+3. The feed will be refreshed with all entries re-downloaded and processed with your current rules
+
+**Warning**: This operation deletes all existing entries from the feed and re-downloads them. Use with caution.
 
 ### Available Placeholders
 
@@ -44,6 +59,23 @@ You can use these placeholders in your replacement strings:
 - `{url}` - The entry's URL (article link)
 - `{feed_url}` - The feed's URL
 - `{title}` - The feed's title/name
+
+## Use Cases
+
+### Use Case 1: Fix Broken Image Paths
+Some feeds have relative image URLs that don't work in feed readers. Use the `{feed_url}` placeholder to convert them to absolute URLs.
+
+### Use Case 2: Remove Advertisements
+Strip out advertisement sections or tracking scripts from feed content using regex patterns.
+
+### Use Case 3: Add Read More Links
+Append a "Read more" link with the full article URL using the `{url}` placeholder.
+
+### Use Case 4: Format Enhancement
+Add custom styling, structure, or formatting to feed entries that lack proper HTML formatting.
+
+### Use Case 5: Content Sanitization
+Remove or replace unwanted elements like social media embeds, newsletter footers, or paywalls.
 
 ## Examples
 
@@ -68,12 +100,16 @@ You can use these placeholders in your replacement strings:
 When a new entry is added to FreshRSS:
 
 1. The extension checks if replacement rules are configured for the entry's feed
-2. It applies each rule in sequence to the entry content
+2. It applies each rule in **sequential order** to the entry content (order matters!)
 3. For each rule:
-   - Validates the regex pattern
-   - Replaces placeholders with actual values
+   - Validates the regex pattern syntax
+   - If invalid, the pattern is logged as an error and skipped
+   - Replaces placeholders (`{url}`, `{feed_url}`, `{title}`) with actual values
    - Applies the regex replacement to the content
 4. The modified content is saved to the database
+5. A log entry records how many rules were successfully applied
+
+**Note**: Rules are applied sequentially, meaning the output of one rule becomes the input for the next. This allows for chained transformations.
 
 ## Requirements
 
@@ -87,6 +123,9 @@ When a new entry is added to FreshRSS:
 - **Scope**: Only modifies entry content, not titles or other metadata
 - **Rule order**: Rules are applied in the order they're defined
 - **Error handling**: Invalid regex patterns are logged and skipped
+- **AJAX Controller**: Provides a custom controller for feed reload operations
+- **Backward compatibility**: Automatically migrates old single-rule format to new multi-rule format
+- **HTML entity handling**: Properly decodes HTML entities in patterns and replacements
 
 ## Regex Tips
 

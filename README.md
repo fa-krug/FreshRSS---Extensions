@@ -4,15 +4,31 @@ A small collection of user extensions for FreshRSS. Each extension lives in its 
 
 ## Extensions in this repository
 
-- Replacer
-  - Replace parts of incoming entry content using per‑feed regular expressions.
+- **FixXEmbedding**
+  - Replaces X.com (Twitter) error messages with embedded media content.
+  - Fetches and displays actual media from X.com posts using the fxtwitter.com API.
+  - Per-feed configuration to control which feeds are affected.
+  - Folder: xExtension-FixXEmbedding
+  - More info: xExtension-FixXEmbedding/README.md
+
+- **FixYoutubeEmbedding**
+  - Replaces YouTube iframe embeds with thumbnail images linked to videos.
+  - Reduces bandwidth usage and improves privacy and loading times.
+  - Per-feed configuration to control which feeds are affected.
+  - Folder: xExtension-FixYoutubeEmbedding
+  - More info: xExtension-FixYoutubeEmbedding/README.md
+
+- **Replacer**
+  - Replace parts of incoming entry content using per-feed regular expressions.
   - Placeholders supported in the replacement string: {url}, {feed_url}, {title}.
+  - Multiple rules per feed with dynamic content support.
   - Folder: xExtension-Replacer
   - More info: xExtension-Replacer/README.md
 
-- UpdateDateToNow
-  - Set the publication date of incoming entries to “now” just before insertion.
-  - Supports an optional timezone and per‑feed toggles to control which feeds are affected.
+- **UpdateDateToNow**
+  - Set the publication date of incoming entries to "now" just before insertion.
+  - Supports an optional timezone and per-feed toggles to control which feeds are affected.
+  - Useful for feeds with incorrect timestamps or email newsletters.
   - Folder: xExtension-UpdatePubDateNow
   - More info: xExtension-UpdatePubDateNow/README.md
 
