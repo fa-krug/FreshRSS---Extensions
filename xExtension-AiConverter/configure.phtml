@@ -4,12 +4,21 @@ $apiEndpoint = $config['api_endpoint'] ?? 'https://api.openai.com/v1/chat/comple
 $apiToken = $config['api_token'] ?? '';
 $model = $config['model'] ?? 'gpt-4o-mini';
 $processingMode = $config['processing_mode'] ?? 'background';
-$defaultPrompt = $config['default_prompt'] ?? 'Please extract and reformat the main content from the following article. Return the result as clean HTML containing:
-1. The main text content in readable paragraphs
-2. A header image (if available) at the top using an <img> tag
-3. At the bottom, add a right-aligned link to the original article with the text "Read original article"
+$defaultPrompt = $config['default_prompt'] ?? 'Extract and reformat the main article content into clean HTML. Follow these rules strictly:
 
-Make sure to preserve important formatting and structure while removing ads, navigation, and other non-essential elements.';
+1. **Text Content**: Extract ONLY the main article text in readable paragraphs. Do NOT add introductions, summaries, or conclusions that are not in the original article.
+
+2. **Header Image**: If and ONLY if there is a clear header/featured image in the article, include it at the top using: <img src="URL" alt="description">
+   - If there is NO image, do NOT include an <img> tag at all
+   - Do NOT use placeholder images or generic images
+
+3. **Source Link**: At the very bottom, add a right-aligned link: <p style="text-align: right;"><a href="{url}">Read original article</a></p>
+
+4. **Formatting**: Preserve the article\'s structure (headings, lists, quotes) but remove ads, navigation, footers, and promotional content.
+
+5. **Do NOT add**: Do not add any commentary, analysis, summaries, or content that is not part of the original article.
+
+Return ONLY the HTML output, nothing else.';
 
 $feedConfigs = $config['feed_configs'] ?? array();
 
