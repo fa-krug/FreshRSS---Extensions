@@ -7,12 +7,15 @@ final class FixXEmbeddingExtension extends Minz_Extension {
 	public function init(): void {
 		// Hook into the pre-insert phase of an entry
 		Minz_ExtensionManager::addHook('entry_before_insert', [$this, 'beforeInsert']);
+		Minz_Log::notice('FixXEmbedding extension initialized');
 	}
 
 	/**
 	 * Hook: called before inserting an entry into the database.
-	 * @param FreshRSS_Entry $entry
-	 * @return FreshRSS_Entry
+	 * Fixes X.com (Twitter) error messages by fetching actual media from fxtwitter.com API.
+	 *
+	 * @param FreshRSS_Entry $entry The entry to process
+	 * @return FreshRSS_Entry The modified entry
 	 */
 	public function beforeInsert($entry) {
 		// Load configuration (user-level)
@@ -25,10 +28,10 @@ final class FixXEmbeddingExtension extends Minz_Extension {
 		$feedId = method_exists($entry, 'feedId') ? (int)$entry->feedId() : 0;
 		$apply = ($feedId > 0) && !empty($enabledFeeds[$feedId]);
 		if (!$apply) {
-			return $entry;
+			return $entry; // Skip: feed not enabled for X embedding fix
 		}
 
-		// Get entry URL
+		// Get entry URL (needed to extract tweet ID)
 		$entryUrl = method_exists($entry, 'link') ? $entry->link() : '';
 
 		// Process entry content
@@ -37,6 +40,7 @@ final class FixXEmbeddingExtension extends Minz_Extension {
 			$newContent = $this->replaceXErrorMessage($content, $entryUrl);
 			if ($newContent !== $content) {
 				$entry->_content($newContent);
+				Minz_Log::notice('FixXEmbedding: Fixed X.com error message for feed ID ' . $feedId);
 			}
 		}
 
@@ -45,9 +49,13 @@ final class FixXEmbeddingExtension extends Minz_Extension {
 
 	/**
 	 * Replace X.com error messages with embedded media from fxtwitter.com API
-	 * @param string $content
-	 * @param string $url
-	 * @return string
+	 *
+	 * Detects X.com "Something went wrong" error messages and replaces them with
+	 * actual media fetched from the fxtwitter.com API.
+	 *
+	 * @param string $content The entry content to process
+	 * @param string $url The entry URL (contains tweet ID)
+	 * @return string The content with error messages replaced by media or fallback link
 	 */
 	private function replaceXErrorMessage(string $content, string $url): string {
 		// Regex pattern to match the X.com error message div
@@ -55,14 +63,19 @@ final class FixXEmbeddingExtension extends Minz_Extension {
 
 		// Check if content contains the error message
 		if (!preg_match($pattern, $content)) {
-			return $content;
+			return $content; // No error message found, return unchanged
 		}
 
-		// Extract tweet ID from URL
+		Minz_Log::notice('FixXEmbedding: Detected X.com error message in content');
+
+		// Extract tweet ID from URL (format: .../status/1234567890)
 		if (preg_match('#/status/(\d+)#', $url, $matches)) {
 			$tweetId = $matches[1];
 			$apiUrl = "https://api.fxtwitter.com/status/{$tweetId}";
 
+			Minz_Log::notice('FixXEmbedding: Attempting to fetch media for tweet ID ' . $tweetId);
+
+			// Fetch media URLs from fxtwitter API
 			$mediaUrls = $this->getMediaFromFxTwitter($apiUrl);
 
 			if (!empty($mediaUrls)) {
@@ -79,12 +92,16 @@ final class FixXEmbeddingExtension extends Minz_Extension {
 					htmlspecialchars($url, ENT_QUOTES, 'UTF-8'),
 					implode('<br/>', $images)
 				);
+				Minz_Log::notice('FixXEmbedding: Successfully embedded ' . count($mediaUrls) . ' media item(s) for tweet ID ' . $tweetId);
 			} else {
 				// Fallback to simple link if we can't get media
 				$replacement = '<a href="' . htmlspecialchars($url, ENT_QUOTES, 'UTF-8') . '">View on X</a>';
+				Minz_Log::warning('FixXEmbedding: No media found for tweet ID ' . $tweetId . ', using fallback link');
 			}
 		} else {
+			// No tweet ID found in URL
 			$replacement = '<a href="' . htmlspecialchars($url, ENT_QUOTES, 'UTF-8') . '">View on X</a>';
+			Minz_Log::warning('FixXEmbedding: Could not extract tweet ID from URL: ' . $url);
 		}
 
 		return preg_replace($pattern, $replacement, $content);
@@ -92,31 +109,39 @@ final class FixXEmbeddingExtension extends Minz_Extension {
 
 	/**
 	 * Fetch media URLs from fxtwitter.com API
-	 * @param string $apiUrl
-	 * @return array
+	 *
+	 * Makes an HTTP request to the fxtwitter.com API to retrieve media URLs
+	 * associated with a tweet. Handles both photos and video thumbnails.
+	 *
+	 * @param string $apiUrl The fxtwitter.com API URL for the tweet
+	 * @return array Array of media URLs, empty if none found or on error
 	 */
 	private function getMediaFromFxTwitter(string $apiUrl): array {
 		try {
+			// Make HTTP request with timeout and user agent
 			$json = @file_get_contents($apiUrl, false, stream_context_create([
 				'http' => [
-					'timeout' => 5,
+					'timeout' => 5, // 5 second timeout to avoid hanging
 					'user_agent' => 'Mozilla/5.0 (compatible; FreshRSS)',
-					'follow_location' => 1
+					'follow_location' => 1 // Follow redirects
 				]
 			]));
 
 			if ($json === false) {
+				Minz_Log::warning('FixXEmbedding: Failed to fetch data from fxtwitter API: ' . $apiUrl);
 				return [];
 			}
 
+			// Parse JSON response
 			$data = json_decode($json, true);
 			if (!$data || !isset($data['tweet'])) {
+				Minz_Log::warning('FixXEmbedding: Invalid API response format from fxtwitter');
 				return [];
 			}
 
 			$mediaUrls = [];
 
-			// Check for photos in media.photos array
+			// Check for photos in media.photos array (primary location)
 			if (isset($data['tweet']['media']['photos']) && is_array($data['tweet']['media']['photos'])) {
 				foreach ($data['tweet']['media']['photos'] as $photo) {
 					if (isset($photo['url'])) {
@@ -134,8 +159,13 @@ final class FixXEmbeddingExtension extends Minz_Extension {
 				}
 			}
 
+			if (empty($mediaUrls)) {
+				Minz_Log::notice('FixXEmbedding: No media found in fxtwitter API response');
+			}
+
 			return $mediaUrls;
 		} catch (Exception $e) {
+			Minz_Log::error('FixXEmbedding: Exception while fetching from fxtwitter API - ' . $e->getMessage());
 			return [];
 		}
 	}
@@ -160,6 +190,8 @@ final class FixXEmbeddingExtension extends Minz_Extension {
 			$this->setUserConfiguration([
 				'enabled_feeds' => $enabledFeeds,
 			]);
+
+			Minz_Log::notice('FixXEmbedding: Configuration saved - ' . count($enabledFeeds) . ' feed(s) enabled');
 		}
 	}
 
