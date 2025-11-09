@@ -9,6 +9,9 @@
  * on a per-feed basis.
  */
 class AiConverterExtension extends Minz_Extension {
+    /** @var bool Track if background processing has been triggered this request */
+    private static $processingTriggered = false;
+
     /**
      * Initialize the extension
      * Registers hooks and controllers, loads assets for configuration page
@@ -18,6 +21,9 @@ class AiConverterExtension extends Minz_Extension {
     public function init() {
         // Register hook to process entries before they are inserted into the database
         $this->registerHook('entry_before_insert', array('AiConverterExtension', 'processEntryWithAi'));
+
+        // Register hook to auto-process pending articles after feed update
+        $this->registerHook('freshrss_user_maintenance', array('AiConverterExtension', 'autoProcessPending'));
 
         // Register our custom controller for AJAX operations (feed reload)
         $this->registerController('aiconverter');
@@ -43,7 +49,9 @@ class AiConverterExtension extends Minz_Extension {
             // Save global settings
             $data['api_endpoint'] = Minz_Request::param('api_endpoint', 'https://api.openai.com/v1/chat/completions');
             $data['api_token'] = Minz_Request::param('api_token', '');
+            $data['model'] = Minz_Request::param('model', 'gpt-4o-mini');
             $data['default_prompt'] = Minz_Request::param('default_prompt', '');
+            $data['processing_mode'] = Minz_Request::param('processing_mode', 'background');
 
             Minz_Log::notice('AiConverter: Saving global settings');
 
@@ -75,12 +83,12 @@ class AiConverterExtension extends Minz_Extension {
     }
 
     /**
-     * Hook callback: Process entry content through AI API before database insertion
+     * Hook callback: Mark or process entry for AI conversion before database insertion
      *
      * This method is called for every new entry before it's saved to the database.
-     * It checks if AI processing is enabled for the entry's feed, and if so, sends
-     * the content to the configured AI API endpoint and replaces the content with
-     * the AI-generated response.
+     * Depending on processing_mode setting:
+     * - 'background': Adds a marker to content for later processing (fast, non-blocking)
+     * - 'immediate': Processes entry with AI right away (slow, blocking)
      *
      * @param FreshRSS_Entry $entry The entry object to process
      * @return FreshRSS_Entry The modified entry object
@@ -110,7 +118,24 @@ class AiConverterExtension extends Minz_Extension {
                 return $entry;
             }
 
-            Minz_Log::notice('AiConverter: Processing entry from feed ' . $feedId);
+            $processingMode = $config['processing_mode'] ?? 'background';
+
+            // Background mode: just mark for later processing
+            if ($processingMode === 'background') {
+                $content = method_exists($entry, 'content') ? $entry->content() : '';
+                if (!empty($content) && strpos($content, '<!--AI_PENDING-->') === false) {
+                    // Add invisible marker at the start of content
+                    $entry->_content('<!--AI_PENDING-->' . $content);
+                    Minz_Log::notice('AiConverter: Marked entry from feed ' . $feedId . ' for background processing');
+
+                    // Trigger background processing asynchronously
+                    self::triggerBackgroundProcessing();
+                }
+                return $entry;
+            }
+
+            // Immediate mode: process now (original behavior)
+            Minz_Log::notice('AiConverter: Processing entry from feed ' . $feedId . ' immediately');
 
             // Get API settings
             $apiEndpoint = $config['api_endpoint'] ?? 'https://api.openai.com/v1/chat/completions';
@@ -145,8 +170,11 @@ class AiConverterExtension extends Minz_Extension {
             // Prepare the message for the AI
             $userMessage = $prompt . "\n\n" . "Article URL: " . $entryUrl . "\n" . "Article Title: " . $entryTitle . "\n\n" . "Content:\n" . $content;
 
+            // Get model configuration
+            $model = $config['model'] ?? 'gpt-4o-mini';
+
             // Call the AI API
-            $aiResponse = self::callAiApi($apiEndpoint, $apiToken, $userMessage);
+            $aiResponse = self::callAiApi($apiEndpoint, $apiToken, $model, $userMessage);
 
             if ($aiResponse !== null) {
                 // Replace entry content with AI response
@@ -168,14 +196,15 @@ class AiConverterExtension extends Minz_Extension {
      *
      * @param string $endpoint The API endpoint URL
      * @param string $token The API access token
+     * @param string $model The model to use (e.g., 'gpt-4o-mini', 'gpt-4o', 'gpt-3.5-turbo')
      * @param string $message The message to send to the AI
      * @return string|null The AI response content, or null on failure
      */
-    private static function callAiApi($endpoint, $token, $message) {
+    private static function callAiApi($endpoint, $token, $model, $message) {
         try {
             // Prepare the request payload
             $payload = array(
-                'model' => 'gpt-4o-mini',
+                'model' => $model,
                 'messages' => array(
                     array(
                         'role' => 'user',
@@ -235,6 +264,226 @@ class AiConverterExtension extends Minz_Extension {
             Minz_Log::error('AiConverter: Error calling AI API - ' . $e->getMessage());
             return null;
         }
+    }
+
+    /**
+     * Hook callback: Auto-process pending articles
+     * This is called periodically by FreshRSS maintenance
+     *
+     * @return void
+     */
+    public static function autoProcessPending() {
+        try {
+            $config = FreshRSS_Context::$user_conf->aiconverter ?? array();
+            $processingMode = $config['processing_mode'] ?? 'background';
+
+            // Only auto-process in background mode
+            if ($processingMode !== 'background') {
+                return;
+            }
+
+            $apiEndpoint = $config['api_endpoint'] ?? 'https://api.openai.com/v1/chat/completions';
+            $apiToken = $config['api_token'] ?? '';
+            $model = $config['model'] ?? 'gpt-4o-mini';
+            $defaultPrompt = $config['default_prompt'] ?? '';
+            $feedConfigs = $config['feed_configs'] ?? array();
+
+            if (empty($apiToken)) {
+                return;
+            }
+
+            // Find and process a few pending entries
+            $entryDAO = FreshRSS_Factory::createEntryDAO();
+            $entries = $entryDAO->listWhere('e', '', FreshRSS_Entry::STATE_ALL, 'DESC', 20);
+
+            $processed = 0;
+            $maxBatch = 3;
+
+            foreach ($entries as $entry) {
+                if ($processed >= $maxBatch) {
+                    break;
+                }
+
+                $content = $entry->content();
+                if (strpos($content, '<!--AI_PENDING-->') === false) {
+                    continue;
+                }
+
+                $feedId = $entry->feed(false);
+
+                // Check if feed is still enabled
+                if (!isset($feedConfigs[$feedId]) || !($feedConfigs[$feedId]['enabled'] ?? false)) {
+                    $cleanContent = str_replace('<!--AI_PENDING-->', '', $content);
+                    $entryDAO->updateContent($entry->id(), $cleanContent);
+                    continue;
+                }
+
+                // Get prompt
+                $prompt = $feedConfigs[$feedId]['custom_prompt'] ?? '';
+                if (empty($prompt)) {
+                    $prompt = $defaultPrompt;
+                }
+
+                if (empty($prompt)) {
+                    continue;
+                }
+
+                // Remove marker
+                $cleanContent = str_replace('<!--AI_PENDING-->', '', $content);
+
+                // Prepare message
+                $userMessage = $prompt . "\n\n" . "Article URL: " . $entry->link() . "\n" . "Article Title: " . $entry->title() . "\n\n" . "Content:\n" . $cleanContent;
+
+                // Process with AI
+                $aiResponse = self::callAiApi($apiEndpoint, $apiToken, $model, $userMessage);
+
+                if ($aiResponse !== null) {
+                    $entryDAO->updateContent($entry->id(), $aiResponse);
+                    $processed++;
+                    Minz_Log::notice('AiConverter: Auto-processed entry ID ' . $entry->id());
+                } else {
+                    $entryDAO->updateContent($entry->id(), $cleanContent);
+                    Minz_Log::error('AiConverter: Failed to auto-process entry ID ' . $entry->id());
+                }
+            }
+
+            if ($processed > 0) {
+                Minz_Log::notice('AiConverter: Auto-processed ' . $processed . ' pending articles');
+            }
+        } catch (Exception $e) {
+            Minz_Log::error('AiConverter: Auto-processing error - ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Trigger background processing asynchronously
+     * Processes pending articles after the response is sent to the client
+     *
+     * @return void
+     */
+    private static function triggerBackgroundProcessing() {
+        // Only trigger once per request to avoid multiple processing
+        if (self::$processingTriggered) {
+            return;
+        }
+
+        self::$processingTriggered = true;
+
+        try {
+            // Register shutdown function to process in background
+            register_shutdown_function(array('AiConverterExtension', 'processInBackground'));
+
+            Minz_Log::notice('AiConverter: Scheduled background processing');
+        } catch (Exception $e) {
+            Minz_Log::error('AiConverter: Failed to schedule background processing - ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Process pending articles in background after response is sent
+     * Called via register_shutdown_function
+     *
+     * @return void
+     */
+    public static function processInBackground() {
+        try {
+            // If fastcgi_finish_request is available, finish the response first
+            // This allows the main request to complete while we continue processing
+            if (function_exists('fastcgi_finish_request')) {
+                fastcgi_finish_request();
+            }
+
+            // Ignore user abort so processing continues even if client disconnects
+            @ignore_user_abort(true);
+            @set_time_limit(300); // 5 minutes max for background processing
+
+            // Get configuration
+            $config = FreshRSS_Context::$user_conf->aiconverter ?? array();
+            $apiEndpoint = $config['api_endpoint'] ?? 'https://api.openai.com/v1/chat/completions';
+            $apiToken = $config['api_token'] ?? '';
+            $model = $config['model'] ?? 'gpt-4o-mini';
+            $defaultPrompt = $config['default_prompt'] ?? '';
+            $feedConfigs = $config['feed_configs'] ?? array();
+
+            if (empty($apiToken)) {
+                return;
+            }
+
+            // Find and process pending entries
+            $entryDAO = FreshRSS_Factory::createEntryDAO();
+            $entries = $entryDAO->listWhere('e', '', FreshRSS_Entry::STATE_ALL, 'DESC', 20);
+
+            $processed = 0;
+            $maxBatch = 5; // Process up to 5 articles per background task
+
+            foreach ($entries as $entry) {
+                if ($processed >= $maxBatch) {
+                    break;
+                }
+
+                $content = $entry->content();
+                if (strpos($content, '<!--AI_PENDING-->') === false) {
+                    continue;
+                }
+
+                $feedId = $entry->feed(false);
+
+                // Check if feed is still enabled
+                if (!isset($feedConfigs[$feedId]) || !($feedConfigs[$feedId]['enabled'] ?? false)) {
+                    $cleanContent = str_replace('<!--AI_PENDING-->', '', $content);
+                    $entryDAO->updateContent($entry->id(), $cleanContent);
+                    continue;
+                }
+
+                // Get prompt
+                $prompt = $feedConfigs[$feedId]['custom_prompt'] ?? '';
+                if (empty($prompt)) {
+                    $prompt = $defaultPrompt;
+                }
+
+                if (empty($prompt)) {
+                    continue;
+                }
+
+                // Remove marker
+                $cleanContent = str_replace('<!--AI_PENDING-->', '', $content);
+
+                // Prepare message
+                $userMessage = $prompt . "\n\n" . "Article URL: " . $entry->link() . "\n" . "Article Title: " . $entry->title() . "\n\n" . "Content:\n" . $cleanContent;
+
+                // Process with AI
+                $aiResponse = self::callAiApi($apiEndpoint, $apiToken, $model, $userMessage);
+
+                if ($aiResponse !== null) {
+                    $entryDAO->updateContent($entry->id(), $aiResponse);
+                    $processed++;
+                    Minz_Log::notice('AiConverter: Background processed entry ID ' . $entry->id());
+                } else {
+                    // Remove marker but keep original content on error
+                    $entryDAO->updateContent($entry->id(), $cleanContent);
+                    Minz_Log::error('AiConverter: Failed to background process entry ID ' . $entry->id());
+                }
+            }
+
+            if ($processed > 0) {
+                Minz_Log::notice('AiConverter: Background task processed ' . $processed . ' articles');
+            }
+        } catch (Exception $e) {
+            Minz_Log::error('AiConverter: Background processing error - ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Public wrapper for callAiApi to allow controller access
+     *
+     * @param string $endpoint The API endpoint URL
+     * @param string $token The API access token
+     * @param string $model The model to use
+     * @param string $message The message to send to the AI
+     * @return string|null The AI response content, or null on failure
+     */
+    public static function callAiApiPublic($endpoint, $token, $model, $message) {
+        return self::callAiApi($endpoint, $token, $model, $message);
     }
 
     /**
