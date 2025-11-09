@@ -43,7 +43,9 @@ class AiConverterExtension extends Minz_Extension {
             // Save global settings
             $data['api_endpoint'] = Minz_Request::param('api_endpoint', 'https://api.openai.com/v1/chat/completions');
             $data['api_token'] = Minz_Request::param('api_token', '');
+            $data['model'] = Minz_Request::param('model', 'gpt-4o-mini');
             $data['default_prompt'] = Minz_Request::param('default_prompt', '');
+            $data['processing_mode'] = Minz_Request::param('processing_mode', 'background');
 
             Minz_Log::notice('AiConverter: Saving global settings');
 
@@ -75,12 +77,12 @@ class AiConverterExtension extends Minz_Extension {
     }
 
     /**
-     * Hook callback: Process entry content through AI API before database insertion
+     * Hook callback: Mark or process entry for AI conversion before database insertion
      *
      * This method is called for every new entry before it's saved to the database.
-     * It checks if AI processing is enabled for the entry's feed, and if so, sends
-     * the content to the configured AI API endpoint and replaces the content with
-     * the AI-generated response.
+     * Depending on processing_mode setting:
+     * - 'background': Adds a marker to content for later processing (fast, non-blocking)
+     * - 'immediate': Processes entry with AI right away (slow, blocking)
      *
      * @param FreshRSS_Entry $entry The entry object to process
      * @return FreshRSS_Entry The modified entry object
@@ -110,7 +112,21 @@ class AiConverterExtension extends Minz_Extension {
                 return $entry;
             }
 
-            Minz_Log::notice('AiConverter: Processing entry from feed ' . $feedId);
+            $processingMode = $config['processing_mode'] ?? 'background';
+
+            // Background mode: just mark for later processing
+            if ($processingMode === 'background') {
+                $content = method_exists($entry, 'content') ? $entry->content() : '';
+                if (!empty($content) && strpos($content, '<!--AI_PENDING-->') === false) {
+                    // Add invisible marker at the start of content
+                    $entry->_content('<!--AI_PENDING-->' . $content);
+                    Minz_Log::notice('AiConverter: Marked entry from feed ' . $feedId . ' for background processing');
+                }
+                return $entry;
+            }
+
+            // Immediate mode: process now (original behavior)
+            Minz_Log::notice('AiConverter: Processing entry from feed ' . $feedId . ' immediately');
 
             // Get API settings
             $apiEndpoint = $config['api_endpoint'] ?? 'https://api.openai.com/v1/chat/completions';
@@ -145,8 +161,11 @@ class AiConverterExtension extends Minz_Extension {
             // Prepare the message for the AI
             $userMessage = $prompt . "\n\n" . "Article URL: " . $entryUrl . "\n" . "Article Title: " . $entryTitle . "\n\n" . "Content:\n" . $content;
 
+            // Get model configuration
+            $model = $config['model'] ?? 'gpt-4o-mini';
+
             // Call the AI API
-            $aiResponse = self::callAiApi($apiEndpoint, $apiToken, $userMessage);
+            $aiResponse = self::callAiApi($apiEndpoint, $apiToken, $model, $userMessage);
 
             if ($aiResponse !== null) {
                 // Replace entry content with AI response
@@ -168,14 +187,15 @@ class AiConverterExtension extends Minz_Extension {
      *
      * @param string $endpoint The API endpoint URL
      * @param string $token The API access token
+     * @param string $model The model to use (e.g., 'gpt-4o-mini', 'gpt-4o', 'gpt-3.5-turbo')
      * @param string $message The message to send to the AI
      * @return string|null The AI response content, or null on failure
      */
-    private static function callAiApi($endpoint, $token, $message) {
+    private static function callAiApi($endpoint, $token, $model, $message) {
         try {
             // Prepare the request payload
             $payload = array(
-                'model' => 'gpt-4o-mini',
+                'model' => $model,
                 'messages' => array(
                     array(
                         'role' => 'user',
@@ -235,6 +255,19 @@ class AiConverterExtension extends Minz_Extension {
             Minz_Log::error('AiConverter: Error calling AI API - ' . $e->getMessage());
             return null;
         }
+    }
+
+    /**
+     * Public wrapper for callAiApi to allow controller access
+     *
+     * @param string $endpoint The API endpoint URL
+     * @param string $token The API access token
+     * @param string $model The model to use
+     * @param string $message The message to send to the AI
+     * @return string|null The AI response content, or null on failure
+     */
+    public static function callAiApiPublic($endpoint, $token, $model, $message) {
+        return self::callAiApi($endpoint, $token, $model, $message);
     }
 
     /**

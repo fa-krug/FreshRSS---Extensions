@@ -77,4 +77,160 @@ class FreshExtension_aiconverter_Controller extends Minz_ActionController {
         }
         exit();
     }
+
+    /**
+     * AJAX action to process pending articles in background
+     *
+     * Processes articles marked with <!--AI_PENDING--> in batches
+     *
+     * Expected POST parameters:
+     * - batch_size: Number of articles to process (default: 5)
+     * - _csrf: CSRF token for security
+     *
+     * @return void Outputs JSON response and exits
+     */
+    public function processAction() {
+        // Disable view rendering for AJAX requests
+        Minz_View::_param('layout', false);
+        header('Content-Type: application/json');
+
+        // Validate request method
+        if (!Minz_Request::isPost()) {
+            echo json_encode(['error' => 'POST method required']);
+            exit();
+        }
+
+        try {
+            // Verify user is authenticated
+            $username = Minz_User::name();
+            if (!$username) {
+                echo json_encode(['error' => 'Not logged in']);
+                exit();
+            }
+
+            $batchSize = Minz_Request::paramInt('batch_size') ?: 5;
+
+            // Get configuration
+            $config = FreshRSS_Context::$user_conf->aiconverter ?? array();
+            $apiEndpoint = $config['api_endpoint'] ?? 'https://api.openai.com/v1/chat/completions';
+            $apiToken = $config['api_token'] ?? '';
+            $model = $config['model'] ?? 'gpt-4o-mini';
+            $defaultPrompt = $config['default_prompt'] ?? '';
+            $feedConfigs = $config['feed_configs'] ?? array();
+
+            if (empty($apiToken)) {
+                echo json_encode(['error' => 'No API token configured']);
+                exit();
+            }
+
+            // Find entries with AI_PENDING marker
+            $entryDAO = FreshRSS_Factory::createEntryDAO();
+            $pendingEntries = $entryDAO->listWhere('e', '', FreshRSS_Entry::STATE_ALL, 'DESC', $batchSize * 3);
+
+            $processed = 0;
+            $errors = 0;
+            $remaining = 0;
+
+            foreach ($pendingEntries as $entry) {
+                if ($processed >= $batchSize) {
+                    $remaining++;
+                    continue;
+                }
+
+                $content = $entry->content();
+
+                // Check if entry has pending marker
+                if (strpos($content, '<!--AI_PENDING-->') === false) {
+                    continue;
+                }
+
+                $feedId = $entry->feed(false);
+
+                // Check if feed is still enabled
+                if (!isset($feedConfigs[$feedId]) || !($feedConfigs[$feedId]['enabled'] ?? false)) {
+                    // Remove marker if feed is disabled
+                    $cleanContent = str_replace('<!--AI_PENDING-->', '', $content);
+                    $entryDAO->updateContent($entry->id(), $cleanContent);
+                    continue;
+                }
+
+                // Get prompt for this feed
+                $prompt = $feedConfigs[$feedId]['custom_prompt'] ?? '';
+                if (empty($prompt)) {
+                    $prompt = $defaultPrompt;
+                }
+
+                if (empty($prompt)) {
+                    continue;
+                }
+
+                // Remove marker from content
+                $cleanContent = str_replace('<!--AI_PENDING-->', '', $content);
+
+                // Prepare message
+                $userMessage = $prompt . "\n\n" . "Article URL: " . $entry->link() . "\n" . "Article Title: " . $entry->title() . "\n\n" . "Content:\n" . $cleanContent;
+
+                // Process with AI
+                $aiResponse = AiConverterExtension::callAiApiPublic($apiEndpoint, $apiToken, $model, $userMessage);
+
+                if ($aiResponse !== null) {
+                    // Update entry with AI response
+                    $entryDAO->updateContent($entry->id(), $aiResponse);
+                    $processed++;
+                    Minz_Log::notice('AiConverter: Background processed entry ID ' . $entry->id());
+                } else {
+                    // Remove marker but keep original content
+                    $entryDAO->updateContent($entry->id(), $cleanContent);
+                    $errors++;
+                    Minz_Log::error('AiConverter: Failed to process entry ID ' . $entry->id());
+                }
+            }
+
+            echo json_encode([
+                'success' => true,
+                'processed' => $processed,
+                'errors' => $errors,
+                'remaining' => $remaining
+            ]);
+        } catch (Exception $e) {
+            Minz_Log::error('AiConverter: Background processing error - ' . $e->getMessage());
+            echo json_encode(['error' => $e->getMessage()]);
+        }
+        exit();
+    }
+
+    /**
+     * AJAX action to count pending articles
+     *
+     * @return void Outputs JSON response and exits
+     */
+    public function countPendingAction() {
+        // Disable view rendering for AJAX requests
+        Minz_View::_param('layout', false);
+        header('Content-Type: application/json');
+
+        try {
+            // Verify user is authenticated
+            $username = Minz_User::name();
+            if (!$username) {
+                echo json_encode(['error' => 'Not logged in']);
+                exit();
+            }
+
+            $entryDAO = FreshRSS_Factory::createEntryDAO();
+            $entries = $entryDAO->listWhere('e', '', FreshRSS_Entry::STATE_ALL, 'DESC', 1000);
+
+            $count = 0;
+            foreach ($entries as $entry) {
+                if (strpos($entry->content(), '<!--AI_PENDING-->') !== false) {
+                    $count++;
+                }
+            }
+
+            echo json_encode(['count' => $count]);
+        } catch (Exception $e) {
+            echo json_encode(['error' => $e->getMessage()]);
+        }
+        exit();
+    }
 }

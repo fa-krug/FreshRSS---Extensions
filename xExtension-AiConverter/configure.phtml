@@ -2,6 +2,8 @@
 $config = FreshRSS_Context::$user_conf->aiconverter ?? array();
 $apiEndpoint = $config['api_endpoint'] ?? 'https://api.openai.com/v1/chat/completions';
 $apiToken = $config['api_token'] ?? '';
+$model = $config['model'] ?? 'gpt-4o-mini';
+$processingMode = $config['processing_mode'] ?? 'background';
 $defaultPrompt = $config['default_prompt'] ?? 'Please extract and reformat the main content from the following article. Return the result as clean HTML containing:
 1. The main text content in readable paragraphs
 2. A header image (if available) at the top using an <img> tag
@@ -41,6 +43,37 @@ $feeds = $feedDAO->listFeeds();
                     placeholder="sk-..."
                     style="width: 100%;">
                 <p class="help">Your API access token (kept secure, never logged)</p>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label class="group-name" for="model">AI Model</label>
+            <div class="group-controls">
+                <select id="model" name="model" style="width: 100%;">
+                    <option value="gpt-4o" <?php echo $model === 'gpt-4o' ? 'selected' : ''; ?>>GPT-4o (Best quality, slower)</option>
+                    <option value="gpt-4o-mini" <?php echo $model === 'gpt-4o-mini' ? 'selected' : ''; ?>>GPT-4o Mini (Recommended - Fast & cost-effective)</option>
+                    <option value="gpt-4-turbo" <?php echo $model === 'gpt-4-turbo' ? 'selected' : ''; ?>>GPT-4 Turbo</option>
+                    <option value="gpt-3.5-turbo" <?php echo $model === 'gpt-3.5-turbo' ? 'selected' : ''; ?>>GPT-3.5 Turbo (Fastest, cheapest)</option>
+                    <option value="claude-3-5-sonnet-20241022" <?php echo $model === 'claude-3-5-sonnet-20241022' ? 'selected' : ''; ?>>Claude 3.5 Sonnet (for Anthropic API)</option>
+                    <option value="claude-3-5-haiku-20241022" <?php echo $model === 'claude-3-5-haiku-20241022' ? 'selected' : ''; ?>>Claude 3.5 Haiku (for Anthropic API)</option>
+                </select>
+                <p class="help">Choose the AI model to use. Faster models process articles quicker but may have lower quality. For local AI (Ollama/LocalAI), use the model name you have installed.</p>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label class="group-name" for="processing_mode">Processing Mode</label>
+            <div class="group-controls">
+                <select id="processing_mode" name="processing_mode" style="width: 100%;">
+                    <option value="background" <?php echo $processingMode === 'background' ? 'selected' : ''; ?>>Background (Recommended - Non-blocking)</option>
+                    <option value="immediate" <?php echo $processingMode === 'immediate' ? 'selected' : ''; ?>>Immediate (Blocking - Slower feed updates)</option>
+                </select>
+                <p class="help"><strong>Background:</strong> Articles are marked for processing and converted automatically in the background (fast feed updates). <strong>Immediate:</strong> Articles are processed during feed update (slow feed updates).</p>
+                <div id="pending-status" style="margin-top: 10px; padding: 10px; background: #f0f0f0; border-radius: 4px; display: none;">
+                    <strong>Pending Articles:</strong> <span id="pending-count">0</span> |
+                    <button type="button" class="btn btn-important" id="process-pending-btn">Process Pending Articles</button>
+                    <span id="processing-status" style="margin-left: 10px;"></span>
+                </div>
             </div>
         </div>
 
