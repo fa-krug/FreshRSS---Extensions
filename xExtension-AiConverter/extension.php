@@ -357,12 +357,12 @@ class AiConverterExtension extends Minz_Extension {
 
     /**
      * Trigger background processing asynchronously
-     * Spawns a background task to process pending articles
+     * Processes pending articles after the response is sent to the client
      *
      * @return void
      */
     private static function triggerBackgroundProcessing() {
-        // Only trigger once per request to avoid spawning multiple processes
+        // Only trigger once per request to avoid multiple processing
         if (self::$processingTriggered) {
             return;
         }
@@ -370,27 +370,106 @@ class AiConverterExtension extends Minz_Extension {
         self::$processingTriggered = true;
 
         try {
-            // Get the base URL for the processing endpoint
-            $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-            $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-            $scriptPath = $_SERVER['SCRIPT_NAME'] ?? '/index.php';
-            $baseUrl = $protocol . '://' . $host . dirname($scriptPath);
+            // Register shutdown function to process in background
+            register_shutdown_function(array('AiConverterExtension', 'processInBackground'));
 
-            // Build processing URL
-            $processUrl = $baseUrl . '/i/?c=aiconverter&a=process&batch_size=5';
-
-            // Use PHP to make an async HTTP request in the background
-            $cmd = sprintf(
-                'curl -X POST -s -m 1 -o /dev/null "%s" > /dev/null 2>&1 &',
-                escapeshellarg($processUrl)
-            );
-
-            // Execute in background (works on Unix/Linux systems)
-            @exec($cmd);
-
-            Minz_Log::notice('AiConverter: Triggered background processing');
+            Minz_Log::notice('AiConverter: Scheduled background processing');
         } catch (Exception $e) {
-            Minz_Log::error('AiConverter: Failed to trigger background processing - ' . $e->getMessage());
+            Minz_Log::error('AiConverter: Failed to schedule background processing - ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Process pending articles in background after response is sent
+     * Called via register_shutdown_function
+     *
+     * @return void
+     */
+    public static function processInBackground() {
+        try {
+            // If fastcgi_finish_request is available, finish the response first
+            // This allows the main request to complete while we continue processing
+            if (function_exists('fastcgi_finish_request')) {
+                fastcgi_finish_request();
+            }
+
+            // Ignore user abort so processing continues even if client disconnects
+            @ignore_user_abort(true);
+            @set_time_limit(300); // 5 minutes max for background processing
+
+            // Get configuration
+            $config = FreshRSS_Context::$user_conf->aiconverter ?? array();
+            $apiEndpoint = $config['api_endpoint'] ?? 'https://api.openai.com/v1/chat/completions';
+            $apiToken = $config['api_token'] ?? '';
+            $model = $config['model'] ?? 'gpt-4o-mini';
+            $defaultPrompt = $config['default_prompt'] ?? '';
+            $feedConfigs = $config['feed_configs'] ?? array();
+
+            if (empty($apiToken)) {
+                return;
+            }
+
+            // Find and process pending entries
+            $entryDAO = FreshRSS_Factory::createEntryDAO();
+            $entries = $entryDAO->listWhere('e', '', FreshRSS_Entry::STATE_ALL, 'DESC', 20);
+
+            $processed = 0;
+            $maxBatch = 5; // Process up to 5 articles per background task
+
+            foreach ($entries as $entry) {
+                if ($processed >= $maxBatch) {
+                    break;
+                }
+
+                $content = $entry->content();
+                if (strpos($content, '<!--AI_PENDING-->') === false) {
+                    continue;
+                }
+
+                $feedId = $entry->feed(false);
+
+                // Check if feed is still enabled
+                if (!isset($feedConfigs[$feedId]) || !($feedConfigs[$feedId]['enabled'] ?? false)) {
+                    $cleanContent = str_replace('<!--AI_PENDING-->', '', $content);
+                    $entryDAO->updateContent($entry->id(), $cleanContent);
+                    continue;
+                }
+
+                // Get prompt
+                $prompt = $feedConfigs[$feedId]['custom_prompt'] ?? '';
+                if (empty($prompt)) {
+                    $prompt = $defaultPrompt;
+                }
+
+                if (empty($prompt)) {
+                    continue;
+                }
+
+                // Remove marker
+                $cleanContent = str_replace('<!--AI_PENDING-->', '', $content);
+
+                // Prepare message
+                $userMessage = $prompt . "\n\n" . "Article URL: " . $entry->link() . "\n" . "Article Title: " . $entry->title() . "\n\n" . "Content:\n" . $cleanContent;
+
+                // Process with AI
+                $aiResponse = self::callAiApi($apiEndpoint, $apiToken, $model, $userMessage);
+
+                if ($aiResponse !== null) {
+                    $entryDAO->updateContent($entry->id(), $aiResponse);
+                    $processed++;
+                    Minz_Log::notice('AiConverter: Background processed entry ID ' . $entry->id());
+                } else {
+                    // Remove marker but keep original content on error
+                    $entryDAO->updateContent($entry->id(), $cleanContent);
+                    Minz_Log::error('AiConverter: Failed to background process entry ID ' . $entry->id());
+                }
+            }
+
+            if ($processed > 0) {
+                Minz_Log::notice('AiConverter: Background task processed ' . $processed . ' articles');
+            }
+        } catch (Exception $e) {
+            Minz_Log::error('AiConverter: Background processing error - ' . $e->getMessage());
         }
     }
 
