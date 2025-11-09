@@ -227,10 +227,42 @@ class AiConverterExtension extends Minz_Extension {
             $content = $responseData['choices'][0]['message']['content'];
             Minz_Log::notice('AiConverter: Received response from AI API (' . strlen($content) . ' characters)');
 
+            // Strip markdown code block wrappers if present
+            $content = self::stripCodeBlockWrapper($content);
+
             return $content;
         } catch (Exception $e) {
             Minz_Log::error('AiConverter: Error calling AI API - ' . $e->getMessage());
             return null;
         }
+    }
+
+    /**
+     * Strip markdown code block wrappers from AI response
+     *
+     * AI models often return HTML content wrapped in markdown code blocks like:
+     * ```html
+     * <div>content</div>
+     * ```
+     *
+     * This function removes these wrappers to get the raw HTML.
+     *
+     * @param string $content The content to clean
+     * @return string The cleaned content
+     */
+    private static function stripCodeBlockWrapper($content) {
+        $content = trim($content);
+
+        // Check if content starts with markdown code block
+        // Matches: ```html, ```HTML, ``` followed by optional language identifier
+        if (preg_match('/^```(?:html|HTML)?\s*\n/s', $content)) {
+            // Remove opening ```[lang] and closing ```
+            $content = preg_replace('/^```(?:html|HTML)?\s*\n/s', '', $content);
+            $content = preg_replace('/\n```\s*$/s', '', $content);
+            $content = trim($content);
+            Minz_Log::notice('AiConverter: Stripped markdown code block wrapper from response');
+        }
+
+        return $content;
     }
 }
