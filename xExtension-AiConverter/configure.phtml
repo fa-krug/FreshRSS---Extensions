@@ -1,0 +1,116 @@
+<?php
+$config = FreshRSS_Context::$user_conf->aiconverter ?? array();
+$apiEndpoint = $config['api_endpoint'] ?? 'https://api.openai.com/v1/chat/completions';
+$apiToken = $config['api_token'] ?? '';
+$defaultPrompt = $config['default_prompt'] ?? 'Please extract and reformat the main content from the following article. Return the result as clean HTML containing:
+1. The main text content in readable paragraphs
+2. A header image (if available) at the top using an <img> tag
+3. At the bottom, add a right-aligned link to the original article with the text "Read original article"
+
+Make sure to preserve important formatting and structure while removing ads, navigation, and other non-essential elements.';
+
+$feedConfigs = $config['feed_configs'] ?? array();
+
+// Get all feeds
+$feedDAO = new FreshRSS_FeedDAO();
+$feeds = $feedDAO->listFeeds();
+?>
+
+<form action="<?php echo _url('extension', 'configure', 'e', urlencode($this->getName())); ?>" method="post" enctype="multipart/form-data">
+    <input type="hidden" name="_csrf" value="<?php echo FreshRSS_Auth::csrfToken(); ?>"/>
+
+    <div class="post">
+        <h2>Global Settings</h2>
+
+        <div class="form-group">
+            <label class="group-name" for="api_endpoint">API Endpoint</label>
+            <div class="group-controls">
+                <input type="text" id="api_endpoint" name="api_endpoint"
+                    value="<?php echo htmlspecialchars($apiEndpoint); ?>"
+                    placeholder="https://api.openai.com/v1/chat/completions"
+                    style="width: 100%;">
+                <p class="help">OpenAI-compatible API endpoint (e.g., OpenAI, Azure OpenAI, LocalAI, Ollama with OpenAI compatibility layer)</p>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label class="group-name" for="api_token">API Access Token</label>
+            <div class="group-controls">
+                <input type="password" id="api_token" name="api_token"
+                    value="<?php echo htmlspecialchars($apiToken); ?>"
+                    placeholder="sk-..."
+                    style="width: 100%;">
+                <p class="help">Your API access token (kept secure, never logged)</p>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label class="group-name" for="default_prompt">Default Prompt</label>
+            <div class="group-controls">
+                <textarea id="default_prompt" name="default_prompt"
+                    rows="10"
+                    placeholder="Enter the default prompt for AI processing..."
+                    style="width: 100%; font-family: monospace;"><?php echo htmlspecialchars($defaultPrompt); ?></textarea>
+                <p class="help">Default prompt used for all feeds unless overridden. The article content will be appended after this prompt.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="post" style="margin-top: 2em;">
+        <h2>Per-Feed Configuration</h2>
+        <p>Enable AI conversion for specific feeds and optionally customize the prompt for each feed.</p>
+    </div>
+
+    <?php if (empty($feeds)): ?>
+        <div class="form-group">
+            <div class="group-controls">
+                <p>No feeds configured. Please add a feed first.</p>
+            </div>
+        </div>
+    <?php else: ?>
+        <?php foreach ($feeds as $feed): ?>
+            <?php
+            $feedId = $feed->id();
+            $feedConfig = $feedConfigs[$feedId] ?? array();
+            $enabled = $feedConfig['enabled'] ?? false;
+            $customPrompt = $feedConfig['custom_prompt'] ?? '';
+            $customPromptDisplay = html_entity_decode($customPrompt, ENT_QUOTES, 'UTF-8');
+            ?>
+
+            <fieldset class="form-group feed-config post" data-feed-id="<?php echo $feedId; ?>">
+                <legend><?php echo htmlspecialchars($feed->name()); ?></legend>
+
+                <input type="hidden" name="feed_ids[]" value="<?php echo $feedId; ?>">
+
+                <div class="form-group">
+                    <label class="group-name">
+                        <input type="checkbox" name="aiconverter_enabled_<?php echo $feedId; ?>"
+                            value="1" <?php echo $enabled ? 'checked' : ''; ?>>
+                        Enable AI Conversion
+                    </label>
+                </div>
+
+                <div class="form-group">
+                    <label class="group-name" for="aiconverter_custom_prompt_<?php echo $feedId; ?>">Custom Prompt (optional)</label>
+                    <div class="group-controls">
+                        <textarea id="aiconverter_custom_prompt_<?php echo $feedId; ?>"
+                            name="aiconverter_custom_prompt_<?php echo $feedId; ?>"
+                            rows="6"
+                            placeholder="Leave empty to use the default prompt..."
+                            style="width: 100%; font-family: monospace;"><?php echo htmlspecialchars($customPromptDisplay); ?></textarea>
+                        <p class="help">If specified, this prompt will be used instead of the default prompt for this feed.</p>
+                    </div>
+                </div>
+
+                <button type="button" class="btn btn-attention btn-reload-feed" data-feed-id="<?php echo $feedId; ?>">Reload Feed</button>
+            </fieldset>
+        <?php endforeach; ?>
+    <?php endif; ?>
+
+    <div class="form-group form-actions">
+        <div class="group-controls">
+            <button type="submit" class="btn btn-important">Submit</button>
+            <button type="reset" class="btn">Cancel</button>
+        </div>
+    </div>
+</form>
