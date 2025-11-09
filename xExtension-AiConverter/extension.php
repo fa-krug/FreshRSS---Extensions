@@ -9,6 +9,9 @@
  * on a per-feed basis.
  */
 class AiConverterExtension extends Minz_Extension {
+    /** @var bool Track if background processing has been triggered this request */
+    private static $processingTriggered = false;
+
     /**
      * Initialize the extension
      * Registers hooks and controllers, loads assets for configuration page
@@ -29,9 +32,6 @@ class AiConverterExtension extends Minz_Extension {
         if (Minz_Request::controllerName() === 'extension') {
             Minz_View::appendScript($this->getFileUrl('configure.js'));
         }
-
-        // Load background processor on all pages
-        Minz_View::appendScript($this->getFileUrl('background.js'));
 
         Minz_Log::notice('AiConverter extension initialized');
     }
@@ -127,6 +127,9 @@ class AiConverterExtension extends Minz_Extension {
                     // Add invisible marker at the start of content
                     $entry->_content('<!--AI_PENDING-->' . $content);
                     Minz_Log::notice('AiConverter: Marked entry from feed ' . $feedId . ' for background processing');
+
+                    // Trigger background processing asynchronously
+                    self::triggerBackgroundProcessing();
                 }
                 return $entry;
             }
@@ -349,6 +352,45 @@ class AiConverterExtension extends Minz_Extension {
             }
         } catch (Exception $e) {
             Minz_Log::error('AiConverter: Auto-processing error - ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Trigger background processing asynchronously
+     * Spawns a background task to process pending articles
+     *
+     * @return void
+     */
+    private static function triggerBackgroundProcessing() {
+        // Only trigger once per request to avoid spawning multiple processes
+        if (self::$processingTriggered) {
+            return;
+        }
+
+        self::$processingTriggered = true;
+
+        try {
+            // Get the base URL for the processing endpoint
+            $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+            $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+            $scriptPath = $_SERVER['SCRIPT_NAME'] ?? '/index.php';
+            $baseUrl = $protocol . '://' . $host . dirname($scriptPath);
+
+            // Build processing URL
+            $processUrl = $baseUrl . '/i/?c=aiconverter&a=process&batch_size=5';
+
+            // Use PHP to make an async HTTP request in the background
+            $cmd = sprintf(
+                'curl -X POST -s -m 1 -o /dev/null "%s" > /dev/null 2>&1 &',
+                escapeshellarg($processUrl)
+            );
+
+            // Execute in background (works on Unix/Linux systems)
+            @exec($cmd);
+
+            Minz_Log::notice('AiConverter: Triggered background processing');
+        } catch (Exception $e) {
+            Minz_Log::error('AiConverter: Failed to trigger background processing - ' . $e->getMessage());
         }
     }
 
