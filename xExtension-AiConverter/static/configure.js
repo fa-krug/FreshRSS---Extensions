@@ -160,36 +160,21 @@
     }
 
     /**
-     * Start automatic background processing
+     * Check and process pending articles
      */
-    function startAutoProcessing() {
+    function checkAndProcess() {
         const processingMode = document.getElementById('processing_mode');
 
         if (processingMode && processingMode.value === 'background') {
-            // Check for pending articles every 30 seconds
-            if (processingInterval) {
-                clearInterval(processingInterval);
-            }
-
-            // Initial check
             updatePendingCount();
 
-            // Periodic check
-            processingInterval = setInterval(function () {
-                updatePendingCount();
-
-                // Auto-process if there are pending items and not currently processing
+            // Wait a bit for count to update, then auto-process if needed
+            setTimeout(function() {
                 const countElement = document.getElementById('pending-count');
                 if (countElement && parseInt(countElement.textContent) > 0 && !isProcessing) {
-                    processPendingArticles(3); // Process 3 at a time automatically
+                    processPendingArticles(5); // Process 5 at a time automatically
                 }
-            }, 30000); // Every 30 seconds
-        } else {
-            // Stop auto-processing if mode is immediate
-            if (processingInterval) {
-                clearInterval(processingInterval);
-                processingInterval = null;
-            }
+            }, 500);
         }
     }
 
@@ -210,16 +195,16 @@
     // Handle processing mode changes
     document.addEventListener('change', function (e) {
         if (e.target.id === 'processing_mode') {
-            startAutoProcessing();
+            checkAndProcess();
         }
     });
 
     // Initialize when page loads
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function () {
-            startAutoProcessing();
+            checkAndProcess();
         });
     } else {
-        startAutoProcessing();
+        checkAndProcess();
     }
 })();

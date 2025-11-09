@@ -19,6 +19,9 @@ class AiConverterExtension extends Minz_Extension {
         // Register hook to process entries before they are inserted into the database
         $this->registerHook('entry_before_insert', array('AiConverterExtension', 'processEntryWithAi'));
 
+        // Register hook to auto-process pending articles after feed update
+        $this->registerHook('freshrss_user_maintenance', array('AiConverterExtension', 'autoProcessPending'));
+
         // Register our custom controller for AJAX operations (feed reload)
         $this->registerController('aiconverter');
 
@@ -26,6 +29,9 @@ class AiConverterExtension extends Minz_Extension {
         if (Minz_Request::controllerName() === 'extension') {
             Minz_View::appendScript($this->getFileUrl('configure.js'));
         }
+
+        // Load background processor on all pages
+        Minz_View::appendScript($this->getFileUrl('background.js'));
 
         Minz_Log::notice('AiConverter extension initialized');
     }
@@ -254,6 +260,95 @@ class AiConverterExtension extends Minz_Extension {
         } catch (Exception $e) {
             Minz_Log::error('AiConverter: Error calling AI API - ' . $e->getMessage());
             return null;
+        }
+    }
+
+    /**
+     * Hook callback: Auto-process pending articles
+     * This is called periodically by FreshRSS maintenance
+     *
+     * @return void
+     */
+    public static function autoProcessPending() {
+        try {
+            $config = FreshRSS_Context::$user_conf->aiconverter ?? array();
+            $processingMode = $config['processing_mode'] ?? 'background';
+
+            // Only auto-process in background mode
+            if ($processingMode !== 'background') {
+                return;
+            }
+
+            $apiEndpoint = $config['api_endpoint'] ?? 'https://api.openai.com/v1/chat/completions';
+            $apiToken = $config['api_token'] ?? '';
+            $model = $config['model'] ?? 'gpt-4o-mini';
+            $defaultPrompt = $config['default_prompt'] ?? '';
+            $feedConfigs = $config['feed_configs'] ?? array();
+
+            if (empty($apiToken)) {
+                return;
+            }
+
+            // Find and process a few pending entries
+            $entryDAO = FreshRSS_Factory::createEntryDAO();
+            $entries = $entryDAO->listWhere('e', '', FreshRSS_Entry::STATE_ALL, 'DESC', 20);
+
+            $processed = 0;
+            $maxBatch = 3;
+
+            foreach ($entries as $entry) {
+                if ($processed >= $maxBatch) {
+                    break;
+                }
+
+                $content = $entry->content();
+                if (strpos($content, '<!--AI_PENDING-->') === false) {
+                    continue;
+                }
+
+                $feedId = $entry->feed(false);
+
+                // Check if feed is still enabled
+                if (!isset($feedConfigs[$feedId]) || !($feedConfigs[$feedId]['enabled'] ?? false)) {
+                    $cleanContent = str_replace('<!--AI_PENDING-->', '', $content);
+                    $entryDAO->updateContent($entry->id(), $cleanContent);
+                    continue;
+                }
+
+                // Get prompt
+                $prompt = $feedConfigs[$feedId]['custom_prompt'] ?? '';
+                if (empty($prompt)) {
+                    $prompt = $defaultPrompt;
+                }
+
+                if (empty($prompt)) {
+                    continue;
+                }
+
+                // Remove marker
+                $cleanContent = str_replace('<!--AI_PENDING-->', '', $content);
+
+                // Prepare message
+                $userMessage = $prompt . "\n\n" . "Article URL: " . $entry->link() . "\n" . "Article Title: " . $entry->title() . "\n\n" . "Content:\n" . $cleanContent;
+
+                // Process with AI
+                $aiResponse = self::callAiApi($apiEndpoint, $apiToken, $model, $userMessage);
+
+                if ($aiResponse !== null) {
+                    $entryDAO->updateContent($entry->id(), $aiResponse);
+                    $processed++;
+                    Minz_Log::notice('AiConverter: Auto-processed entry ID ' . $entry->id());
+                } else {
+                    $entryDAO->updateContent($entry->id(), $cleanContent);
+                    Minz_Log::error('AiConverter: Failed to auto-process entry ID ' . $entry->id());
+                }
+            }
+
+            if ($processed > 0) {
+                Minz_Log::notice('AiConverter: Auto-processed ' . $processed . ' pending articles');
+            }
+        } catch (Exception $e) {
+            Minz_Log::error('AiConverter: Auto-processing error - ' . $e->getMessage());
         }
     }
 
