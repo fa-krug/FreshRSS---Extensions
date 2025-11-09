@@ -1,0 +1,8 @@
+{
+  "name": "AiConverter",
+  "author": "Sascha Krug",
+  "description": "Convert RSS feed content using OpenAI-compatible APIs to extract and reformat articles",
+  "version": "1.0.0",
+  "entrypoint": "AiConverter",
+  "type": "user"
+}
