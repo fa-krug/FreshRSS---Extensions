@@ -13,11 +13,20 @@ $defaultPrompt = $config['default_prompt'] ?? 'Extract and reformat the main art
    - If there is NO image, do NOT include an <img> tag at all
    - Do NOT use placeholder images or generic images
 
-3. **Source Link**: At the very bottom, add a right-aligned link: <p style="text-align: right;"><a href="{url}">Read original article</a></p>
+3. **Comments**: If the article content includes comments (like from Reddit, YouTube, forums, etc.), extract and include the top 10 most relevant or upvoted comments at the end of the article. Format each comment as:
+   <div class="comment">
+     <p><strong>Author Name</strong></p>
+     <p>Comment content here...</p>
+   </div>
+   - Include the author name and the full comment text
+   - Only include comments if they are present in the source content
+   - If there are no comments, skip this section entirely
 
-4. **Formatting**: Preserve the article\'s structure (headings, lists, quotes) but remove ads, navigation, footers, and promotional content.
+4. **Source Link**: At the very bottom, add a right-aligned link: <p style="text-align: right;"><a href="{url}">Read original article</a></p>
 
-5. **Do NOT add**: Do not add any commentary, analysis, summaries, or content that is not part of the original article.
+5. **Formatting**: Preserve the article\'s structure (headings, lists, quotes) but remove ads, navigation, footers, and promotional content.
+
+6. **Do NOT add**: Do not add any commentary, analysis, summaries, or content that is not part of the original article.
 
 Return ONLY the HTML output, nothing else.';
 $defaultPromptDisplay = html_entity_decode($defaultPrompt, ENT_QUOTES, 'UTF-8');
