@@ -3,7 +3,6 @@ $config = FreshRSS_Context::$user_conf->aiconverter ?? array();
 $apiEndpoint = $config['api_endpoint'] ?? 'https://api.openai.com/v1/chat/completions';
 $apiToken = $config['api_token'] ?? '';
 $model = $config['model'] ?? 'gpt-4o-mini';
-$processingMode = $config['processing_mode'] ?? 'background';
 $defaultPrompt = $config['default_prompt'] ?? 'Extract and reformat the main article content into clean HTML. Follow these rules strictly:
 
 1. **Text Content**: Extract ONLY the main article text in readable paragraphs. Do NOT add introductions, summaries, or conclusions that are not in the original article.
@@ -67,22 +66,6 @@ $feeds = $feedDAO->listFeeds();
                     <option value="claude-3-5-haiku-20241022" <?php echo $model === 'claude-3-5-haiku-20241022' ? 'selected' : ''; ?>>Claude 3.5 Haiku (for Anthropic API)</option>
                 </select>
                 <p class="help">Choose the AI model to use. Faster models process articles quicker but may have lower quality. For local AI (Ollama/LocalAI), use the model name you have installed.</p>
-            </div>
-        </div>
-
-        <div class="form-group">
-            <label class="group-name" for="processing_mode">Processing Mode</label>
-            <div class="group-controls">
-                <select id="processing_mode" name="processing_mode" style="width: 100%;">
-                    <option value="background" <?php echo $processingMode === 'background' ? 'selected' : ''; ?>>Background (Recommended - Non-blocking)</option>
-                    <option value="immediate" <?php echo $processingMode === 'immediate' ? 'selected' : ''; ?>>Immediate (Blocking - Slower feed updates)</option>
-                </select>
-                <p class="help"><strong>Background:</strong> Articles are marked for processing and converted automatically in the background (fast feed updates). <strong>Immediate:</strong> Articles are processed during feed update (slow feed updates).</p>
-                <div id="pending-status" style="margin-top: 10px; padding: 10px; background: #f0f0f0; border-radius: 4px; display: none;">
-                    <strong>Pending Articles:</strong> <span id="pending-count">0</span> |
-                    <button type="button" class="btn btn-important" id="process-pending-btn">Process Pending Articles</button>
-                    <span id="processing-status" style="margin-left: 10px;"></span>
-                </div>
             </div>
         </div>
 
