@@ -9,9 +9,6 @@
  * on a per-feed basis.
  */
 class AiConverterExtension extends Minz_Extension {
-    /** @var bool Track if background processing has been triggered this request */
-    private static $processingTriggered = false;
-
     /**
      * Initialize the extension
      * Registers hooks and controllers, loads assets for configuration page
@@ -21,9 +18,6 @@ class AiConverterExtension extends Minz_Extension {
     public function init() {
         // Register hook to process entries before they are inserted into the database
         $this->registerHook('entry_before_insert', array('AiConverterExtension', 'processEntryWithAi'));
-
-        // Register hook to auto-process pending articles after feed update
-        $this->registerHook('freshrss_user_maintenance', array('AiConverterExtension', 'autoProcessPending'));
 
         // Register our custom controller for AJAX operations (feed reload)
         $this->registerController('aiconverter');
@@ -51,7 +45,6 @@ class AiConverterExtension extends Minz_Extension {
             $data['api_token'] = Minz_Request::param('api_token', '');
             $data['model'] = Minz_Request::param('model', 'gpt-4o-mini');
             $data['default_prompt'] = Minz_Request::param('default_prompt', '');
-            $data['processing_mode'] = Minz_Request::param('processing_mode', 'background');
 
             Minz_Log::notice('AiConverter: Saving global settings');
 
@@ -83,12 +76,10 @@ class AiConverterExtension extends Minz_Extension {
     }
 
     /**
-     * Hook callback: Mark or process entry for AI conversion before database insertion
+     * Hook callback: Process entry for AI conversion before database insertion
      *
      * This method is called for every new entry before it's saved to the database.
-     * Depending on processing_mode setting:
-     * - 'background': Adds a marker to content for later processing (fast, non-blocking)
-     * - 'immediate': Processes entry with AI right away (slow, blocking)
+     * It processes the entry with AI synchronously.
      *
      * @param FreshRSS_Entry $entry The entry object to process
      * @return FreshRSS_Entry The modified entry object
@@ -118,24 +109,7 @@ class AiConverterExtension extends Minz_Extension {
                 return $entry;
             }
 
-            $processingMode = $config['processing_mode'] ?? 'background';
-
-            // Background mode: just mark for later processing
-            if ($processingMode === 'background') {
-                $content = method_exists($entry, 'content') ? $entry->content() : '';
-                if (!empty($content) && strpos($content, '<!--AI_PENDING-->') === false) {
-                    // Add invisible marker at the start of content
-                    $entry->_content('<!--AI_PENDING-->' . $content);
-                    Minz_Log::notice('AiConverter: Marked entry from feed ' . $feedId . ' for background processing');
-
-                    // Trigger background processing asynchronously
-                    self::triggerBackgroundProcessing();
-                }
-                return $entry;
-            }
-
-            // Immediate mode: process now (original behavior)
-            Minz_Log::notice('AiConverter: Processing entry from feed ' . $feedId . ' immediately');
+            Minz_Log::notice('AiConverter: Processing entry from feed ' . $feedId);
 
             // Get API settings
             $apiEndpoint = $config['api_endpoint'] ?? 'https://api.openai.com/v1/chat/completions';
@@ -267,217 +241,6 @@ class AiConverterExtension extends Minz_Extension {
     }
 
     /**
-     * Hook callback: Auto-process pending articles
-     * This is called periodically by FreshRSS maintenance
-     *
-     * @return void
-     */
-    public static function autoProcessPending() {
-        try {
-            $config = FreshRSS_Context::$user_conf->aiconverter ?? array();
-            $processingMode = $config['processing_mode'] ?? 'background';
-
-            // Only auto-process in background mode
-            if ($processingMode !== 'background') {
-                return;
-            }
-
-            $apiEndpoint = $config['api_endpoint'] ?? 'https://api.openai.com/v1/chat/completions';
-            $apiToken = $config['api_token'] ?? '';
-            $model = $config['model'] ?? 'gpt-4o-mini';
-            $defaultPrompt = $config['default_prompt'] ?? '';
-            $feedConfigs = $config['feed_configs'] ?? array();
-
-            if (empty($apiToken)) {
-                return;
-            }
-
-            // Find and process a few pending entries
-            $entryDAO = FreshRSS_Factory::createEntryDAO();
-            $entries = $entryDAO->listWhere('a', 0, FreshRSS_Entry::STATE_ALL, null, '0', '0', 'id', 'DESC', '0', [], 20);
-
-            $processed = 0;
-            $maxBatch = 3;
-
-            foreach ($entries as $entry) {
-                if ($processed >= $maxBatch) {
-                    break;
-                }
-
-                $content = $entry->content();
-                if (strpos($content, '<!--AI_PENDING-->') === false) {
-                    continue;
-                }
-
-                $feed = $entry->feed(false);
-                $feedId = is_object($feed) ? $feed->id() : $feed;
-
-                // Check if feed is still enabled
-                if (!isset($feedConfigs[$feedId]) || !($feedConfigs[$feedId]['enabled'] ?? false)) {
-                    $cleanContent = str_replace('<!--AI_PENDING-->', '', $content);
-                    self::updateEntryWithRetry($entryDAO, $entry, $cleanContent);
-                    continue;
-                }
-
-                // Get prompt
-                $prompt = $feedConfigs[$feedId]['custom_prompt'] ?? '';
-                if (empty($prompt)) {
-                    $prompt = $defaultPrompt;
-                }
-
-                if (empty($prompt)) {
-                    continue;
-                }
-
-                // Remove marker
-                $cleanContent = str_replace('<!--AI_PENDING-->', '', $content);
-
-                // Prepare message
-                $userMessage = $prompt . "\n\n" . "Article URL: " . $entry->link() . "\n" . "Article Title: " . $entry->title() . "\n\n" . "Content:\n" . $cleanContent;
-
-                // Process with AI
-                $aiResponse = self::callAiApi($apiEndpoint, $apiToken, $model, $userMessage);
-
-                if ($aiResponse !== null) {
-                    if (self::updateEntryWithRetry($entryDAO, $entry, $aiResponse)) {
-                        $processed++;
-                        Minz_Log::notice('AiConverter: Auto-processed entry ID ' . $entry->id());
-                    }
-                } else {
-                    self::updateEntryWithRetry($entryDAO, $entry, $cleanContent);
-                    Minz_Log::error('AiConverter: Failed to auto-process entry ID ' . $entry->id());
-                }
-            }
-
-            if ($processed > 0) {
-                Minz_Log::notice('AiConverter: Auto-processed ' . $processed . ' pending articles');
-            }
-        } catch (Exception $e) {
-            Minz_Log::error('AiConverter: Auto-processing error - ' . $e->getMessage());
-        }
-    }
-
-    /**
-     * Trigger background processing asynchronously
-     * Processes pending articles after the response is sent to the client
-     *
-     * @return void
-     */
-    private static function triggerBackgroundProcessing() {
-        // Only trigger once per request to avoid multiple processing
-        if (self::$processingTriggered) {
-            return;
-        }
-
-        self::$processingTriggered = true;
-
-        try {
-            // Register shutdown function to process in background
-            register_shutdown_function(array('AiConverterExtension', 'processInBackground'));
-
-            Minz_Log::notice('AiConverter: Scheduled background processing');
-        } catch (Exception $e) {
-            Minz_Log::error('AiConverter: Failed to schedule background processing - ' . $e->getMessage());
-        }
-    }
-
-    /**
-     * Process pending articles in background after response is sent
-     * Called via register_shutdown_function
-     *
-     * @return void
-     */
-    public static function processInBackground() {
-        try {
-            // If fastcgi_finish_request is available, finish the response first
-            // This allows the main request to complete while we continue processing
-            if (function_exists('fastcgi_finish_request')) {
-                fastcgi_finish_request();
-            }
-
-            // Ignore user abort so processing continues even if client disconnects
-            @ignore_user_abort(true);
-            @set_time_limit(300); // 5 minutes max for background processing
-
-            // Get configuration
-            $config = FreshRSS_Context::$user_conf->aiconverter ?? array();
-            $apiEndpoint = $config['api_endpoint'] ?? 'https://api.openai.com/v1/chat/completions';
-            $apiToken = $config['api_token'] ?? '';
-            $model = $config['model'] ?? 'gpt-4o-mini';
-            $defaultPrompt = $config['default_prompt'] ?? '';
-            $feedConfigs = $config['feed_configs'] ?? array();
-
-            if (empty($apiToken)) {
-                return;
-            }
-
-            // Find and process pending entries
-            $entryDAO = FreshRSS_Factory::createEntryDAO();
-            $entries = $entryDAO->listWhere('a', 0, FreshRSS_Entry::STATE_ALL, null, '0', '0', 'id', 'DESC', '0', [], 20);
-
-            $processed = 0;
-            $maxBatch = 5; // Process up to 5 articles per background task
-
-            foreach ($entries as $entry) {
-                if ($processed >= $maxBatch) {
-                    break;
-                }
-
-                $content = $entry->content();
-                if (strpos($content, '<!--AI_PENDING-->') === false) {
-                    continue;
-                }
-
-                $feed = $entry->feed(false);
-                $feedId = is_object($feed) ? $feed->id() : $feed;
-
-                // Check if feed is still enabled
-                if (!isset($feedConfigs[$feedId]) || !($feedConfigs[$feedId]['enabled'] ?? false)) {
-                    $cleanContent = str_replace('<!--AI_PENDING-->', '', $content);
-                    self::updateEntryWithRetry($entryDAO, $entry, $cleanContent);
-                    continue;
-                }
-
-                // Get prompt
-                $prompt = $feedConfigs[$feedId]['custom_prompt'] ?? '';
-                if (empty($prompt)) {
-                    $prompt = $defaultPrompt;
-                }
-
-                if (empty($prompt)) {
-                    continue;
-                }
-
-                // Remove marker
-                $cleanContent = str_replace('<!--AI_PENDING-->', '', $content);
-
-                // Prepare message
-                $userMessage = $prompt . "\n\n" . "Article URL: " . $entry->link() . "\n" . "Article Title: " . $entry->title() . "\n\n" . "Content:\n" . $cleanContent;
-
-                // Process with AI
-                $aiResponse = self::callAiApi($apiEndpoint, $apiToken, $model, $userMessage);
-
-                if ($aiResponse !== null) {
-                    if (self::updateEntryWithRetry($entryDAO, $entry, $aiResponse)) {
-                        $processed++;
-                        Minz_Log::notice('AiConverter: Background processed entry ID ' . $entry->id());
-                    }
-                } else {
-                    // Remove marker but keep original content on error
-                    self::updateEntryWithRetry($entryDAO, $entry, $cleanContent);
-                    Minz_Log::error('AiConverter: Failed to background process entry ID ' . $entry->id());
-                }
-            }
-
-            if ($processed > 0) {
-                Minz_Log::notice('AiConverter: Background task processed ' . $processed . ' articles');
-            }
-        } catch (Exception $e) {
-            Minz_Log::error('AiConverter: Background processing error - ' . $e->getMessage());
-        }
-    }
-
-    /**
      * Public wrapper for callAiApi to allow controller access
      *
      * @param string $endpoint The API endpoint URL
@@ -491,54 +254,37 @@ class AiConverterExtension extends Minz_Extension {
     }
 
     /**
-     * Public wrapper for updateEntryWithRetry to allow controller access
+     * Public wrapper for updateEntry to allow controller access
      *
      * @param FreshRSS_EntryDAO $entryDAO The entry DAO instance
      * @param FreshRSS_Entry $entry The entry to update
      * @param string $newContent The new content to set
      * @return bool True on success, false on failure
      */
-    public static function updateEntryWithRetryPublic($entryDAO, $entry, $newContent) {
-        return self::updateEntryWithRetry($entryDAO, $entry, $newContent);
+    public static function updateEntryPublic($entryDAO, $entry, $newContent) {
+        return self::updateEntry($entryDAO, $entry, $newContent);
     }
 
     /**
-     * Update entry with retry logic for database locks
-     *
-     * SQLite can experience "database is locked" errors during concurrent writes.
-     * This method retries the update operation with exponential backoff.
+     * Update entry content
      *
      * @param FreshRSS_EntryDAO $entryDAO The entry DAO instance
      * @param FreshRSS_Entry $entry The entry to update
      * @param string $newContent The new content to set
-     * @param int $maxRetries Maximum number of retry attempts
      * @return bool True on success, false on failure
      */
-    private static function updateEntryWithRetry($entryDAO, $entry, $newContent, $maxRetries = 3) {
+    private static function updateEntry($entryDAO, $entry, $newContent) {
         $entryArray = $entry->toArray();
         $entryArray['content'] = $newContent;
 
-        for ($attempt = 0; $attempt < $maxRetries; $attempt++) {
-            try {
-                $result = $entryDAO->updateEntry($entryArray);
-                if ($result) {
-                    return true;
-                }
-            } catch (Exception $e) {
-                $errorMessage = $e->getMessage();
-                // Check if it's a database locked error
-                if (strpos($errorMessage, 'database is locked') !== false) {
-                    if ($attempt < $maxRetries - 1) {
-                        // Exponential backoff: 100ms, 200ms, 400ms
-                        $delay = (100000 * pow(2, $attempt)); // microseconds
-                        usleep($delay);
-                        Minz_Log::warning('AiConverter: Database locked, retrying in ' . ($delay / 1000) . 'ms (attempt ' . ($attempt + 1) . '/' . $maxRetries . ')');
-                        continue;
-                    }
-                }
-                Minz_Log::error('AiConverter: Failed to update entry - ' . $errorMessage);
-                return false;
+        try {
+            $result = $entryDAO->updateEntry($entryArray);
+            if ($result) {
+                return true;
             }
+        } catch (Exception $e) {
+            Minz_Log::error('AiConverter: Failed to update entry - ' . $e->getMessage());
+            return false;
         }
         return false;
     }
