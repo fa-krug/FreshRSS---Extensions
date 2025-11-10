@@ -294,7 +294,7 @@ class AiConverterExtension extends Minz_Extension {
 
             // Find and process a few pending entries
             $entryDAO = FreshRSS_Factory::createEntryDAO();
-            $entries = $entryDAO->listWhere('e', 0, FreshRSS_Entry::STATE_ALL, null, '0', '0', 'id', 'DESC', '0', [], 20);
+            $entries = $entryDAO->listWhere('a', 0, FreshRSS_Entry::STATE_ALL, null, '0', '0', 'id', 'DESC', '0', [], 20);
 
             $processed = 0;
             $maxBatch = 3;
@@ -411,7 +411,7 @@ class AiConverterExtension extends Minz_Extension {
 
             // Find and process pending entries
             $entryDAO = FreshRSS_Factory::createEntryDAO();
-            $entries = $entryDAO->listWhere('e', 0, FreshRSS_Entry::STATE_ALL, null, '0', '0', 'id', 'DESC', '0', [], 20);
+            $entries = $entryDAO->listWhere('a', 0, FreshRSS_Entry::STATE_ALL, null, '0', '0', 'id', 'DESC', '0', [], 20);
 
             $processed = 0;
             $maxBatch = 5; // Process up to 5 articles per background task
