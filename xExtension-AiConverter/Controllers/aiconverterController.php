@@ -151,7 +151,9 @@ class FreshExtension_aiconverter_Controller extends Minz_ActionController {
                 if (!isset($feedConfigs[$feedId]) || !($feedConfigs[$feedId]['enabled'] ?? false)) {
                     // Remove marker if feed is disabled
                     $cleanContent = str_replace('<!--AI_PENDING-->', '', $content);
-                    $entryDAO->updateContent($entry->id(), $cleanContent);
+                    $entryArray = $entry->toArray();
+                    $entryArray['content'] = $cleanContent;
+                    $entryDAO->updateEntry($entryArray);
                     continue;
                 }
 
@@ -176,12 +178,16 @@ class FreshExtension_aiconverter_Controller extends Minz_ActionController {
 
                 if ($aiResponse !== null) {
                     // Update entry with AI response
-                    $entryDAO->updateContent($entry->id(), $aiResponse);
+                    $entryArray = $entry->toArray();
+                    $entryArray['content'] = $aiResponse;
+                    $entryDAO->updateEntry($entryArray);
                     $processed++;
                     Minz_Log::notice('AiConverter: Background processed entry ID ' . $entry->id());
                 } else {
                     // Remove marker but keep original content
-                    $entryDAO->updateContent($entry->id(), $cleanContent);
+                    $entryArray = $entry->toArray();
+                    $entryArray['content'] = $cleanContent;
+                    $entryDAO->updateEntry($entryArray);
                     $errors++;
                     Minz_Log::error('AiConverter: Failed to process entry ID ' . $entry->id());
                 }

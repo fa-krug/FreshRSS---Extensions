@@ -315,7 +315,9 @@ class AiConverterExtension extends Minz_Extension {
                 // Check if feed is still enabled
                 if (!isset($feedConfigs[$feedId]) || !($feedConfigs[$feedId]['enabled'] ?? false)) {
                     $cleanContent = str_replace('<!--AI_PENDING-->', '', $content);
-                    $entryDAO->updateContent($entry->id(), $cleanContent);
+                    $entryArray = $entry->toArray();
+                    $entryArray['content'] = $cleanContent;
+                    $entryDAO->updateEntry($entryArray);
                     continue;
                 }
 
@@ -339,11 +341,15 @@ class AiConverterExtension extends Minz_Extension {
                 $aiResponse = self::callAiApi($apiEndpoint, $apiToken, $model, $userMessage);
 
                 if ($aiResponse !== null) {
-                    $entryDAO->updateContent($entry->id(), $aiResponse);
+                    $entryArray = $entry->toArray();
+                    $entryArray['content'] = $aiResponse;
+                    $entryDAO->updateEntry($entryArray);
                     $processed++;
                     Minz_Log::notice('AiConverter: Auto-processed entry ID ' . $entry->id());
                 } else {
-                    $entryDAO->updateContent($entry->id(), $cleanContent);
+                    $entryArray = $entry->toArray();
+                    $entryArray['content'] = $cleanContent;
+                    $entryDAO->updateEntry($entryArray);
                     Minz_Log::error('AiConverter: Failed to auto-process entry ID ' . $entry->id());
                 }
             }
@@ -433,7 +439,9 @@ class AiConverterExtension extends Minz_Extension {
                 // Check if feed is still enabled
                 if (!isset($feedConfigs[$feedId]) || !($feedConfigs[$feedId]['enabled'] ?? false)) {
                     $cleanContent = str_replace('<!--AI_PENDING-->', '', $content);
-                    $entryDAO->updateContent($entry->id(), $cleanContent);
+                    $entryArray = $entry->toArray();
+                    $entryArray['content'] = $cleanContent;
+                    $entryDAO->updateEntry($entryArray);
                     continue;
                 }
 
@@ -457,12 +465,16 @@ class AiConverterExtension extends Minz_Extension {
                 $aiResponse = self::callAiApi($apiEndpoint, $apiToken, $model, $userMessage);
 
                 if ($aiResponse !== null) {
-                    $entryDAO->updateContent($entry->id(), $aiResponse);
+                    $entryArray = $entry->toArray();
+                    $entryArray['content'] = $aiResponse;
+                    $entryDAO->updateEntry($entryArray);
                     $processed++;
                     Minz_Log::notice('AiConverter: Background processed entry ID ' . $entry->id());
                 } else {
                     // Remove marker but keep original content on error
-                    $entryDAO->updateContent($entry->id(), $cleanContent);
+                    $entryArray = $entry->toArray();
+                    $entryArray['content'] = $cleanContent;
+                    $entryDAO->updateEntry($entryArray);
                     Minz_Log::error('AiConverter: Failed to background process entry ID ' . $entry->id());
                 }
             }
