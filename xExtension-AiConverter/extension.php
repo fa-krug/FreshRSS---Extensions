@@ -91,78 +91,75 @@ class AiConverterExtension extends Minz_Extension {
      */
     public static function processEntryWithAi($entry) {
         try {
-            if (!is_object($entry)) {
-                return $entry;
+            if (is_object($entry) === true) {
+                // Get feed ID
+                $feedId = null;
+                if (method_exists($entry, 'feed') && is_object($entry->feed())) {
+                    $feedId = $entry->feed()->id();
+                }
+
+                if (!$feedId) {
+                    return $entry;
+                }
+
+                // Get configuration
+                $config = FreshRSS_Context::$user_conf->aiconverter ?? array();
+                $feedConfigs = $config['feed_configs'] ?? array();
+
+                // Check if AI processing is enabled for this feed
+                if (!isset($feedConfigs[$feedId]) || !($feedConfigs[$feedId]['enabled'] ?? false)) {
+                    return $entry;
+                }
+
+                Minz_Log::notice('AiConverter: Processing entry from feed ' . $feedId);
+
+                // Get API settings
+                $apiEndpoint = $config['api_endpoint'] ?? 'https://api.openai.com/v1/chat/completions';
+                $apiToken = $config['api_token'] ?? '';
+
+                if (empty($apiToken)) {
+                    Minz_Log::warning('AiConverter: No API token configured, skipping processing');
+                    return $entry;
+                }
+
+                // Determine which prompt to use (custom or default)
+                $prompt = $feedConfigs[$feedId]['custom_prompt'] ?? '';
+                if (empty($prompt)) {
+                    $prompt = $config['default_prompt'] ?? '';
+                }
+
+                if (empty($prompt)) {
+                    Minz_Log::warning('AiConverter: No prompt configured for feed ' . $feedId);
+                    return $entry;
+                }
+
+                // Get entry content
+                $content = method_exists($entry, 'content') ? $entry->content() : '';
+                $entryUrl = method_exists($entry, 'link') ? $entry->link() : '';
+                $entryTitle = method_exists($entry, 'title') ? $entry->title() : '';
+
+                if (empty($content)) {
+                    Minz_Log::warning('AiConverter: Entry has no content, skipping');
+                    return $entry;
+                }
+
+                // Prepare the message for the AI
+                $userMessage = $prompt . "\n\n" . "Article URL: " . $entryUrl . "\n" . "Article Title: " . $entryTitle . "\n\n" . "Content:\n" . $content;
+
+                // Get model configuration
+                $model = $config['model'] ?? 'gpt-4o-mini';
+
+                // Call the AI API
+                $aiResponse = self::callAiApi($apiEndpoint, $apiToken, $model, $userMessage);
+
+                if ($aiResponse !== null) {
+                    // Replace entry content with AI response
+                    $entry->_content($aiResponse);
+                    Minz_Log::notice('AiConverter: Successfully processed entry from feed ' . $feedId);
+                } else {
+                    Minz_Log::error('AiConverter: Failed to get response from AI API for feed ' . $feedId);
+                }
             }
-
-            // Get feed ID
-            $feedId = null;
-            if (method_exists($entry, 'feed') && is_object($entry->feed())) {
-                $feedId = $entry->feed()->id();
-            }
-
-            if (!$feedId) {
-                return $entry;
-            }
-
-            // Get configuration
-            $config = FreshRSS_Context::$user_conf->aiconverter ?? array();
-            $feedConfigs = $config['feed_configs'] ?? array();
-
-            // Check if AI processing is enabled for this feed
-            if (!isset($feedConfigs[$feedId]) || !($feedConfigs[$feedId]['enabled'] ?? false)) {
-                return $entry;
-            }
-
-            Minz_Log::notice('AiConverter: Processing entry from feed ' . $feedId);
-
-            // Get API settings
-            $apiEndpoint = $config['api_endpoint'] ?? 'https://api.openai.com/v1/chat/completions';
-            $apiToken = $config['api_token'] ?? '';
-
-            if (empty($apiToken)) {
-                Minz_Log::warning('AiConverter: No API token configured, skipping processing');
-                return $entry;
-            }
-
-            // Determine which prompt to use (custom or default)
-            $prompt = $feedConfigs[$feedId]['custom_prompt'] ?? '';
-            if (empty($prompt)) {
-                $prompt = $config['default_prompt'] ?? '';
-            }
-
-            if (empty($prompt)) {
-                Minz_Log::warning('AiConverter: No prompt configured for feed ' . $feedId);
-                return $entry;
-            }
-
-            // Get entry content
-            $content = method_exists($entry, 'content') ? $entry->content() : '';
-            $entryUrl = method_exists($entry, 'link') ? $entry->link() : '';
-            $entryTitle = method_exists($entry, 'title') ? $entry->title() : '';
-
-            if (empty($content)) {
-                Minz_Log::warning('AiConverter: Entry has no content, skipping');
-                return $entry;
-            }
-
-            // Prepare the message for the AI
-            $userMessage = $prompt . "\n\n" . "Article URL: " . $entryUrl . "\n" . "Article Title: " . $entryTitle . "\n\n" . "Content:\n" . $content;
-
-            // Get model configuration
-            $model = $config['model'] ?? 'gpt-4o-mini';
-
-            // Call the AI API
-            $aiResponse = self::callAiApi($apiEndpoint, $apiToken, $model, $userMessage);
-
-            if ($aiResponse !== null) {
-                // Replace entry content with AI response
-                $entry->_content($aiResponse);
-                Minz_Log::notice('AiConverter: Successfully processed entry from feed ' . $feedId);
-            } else {
-                Minz_Log::error('AiConverter: Failed to get response from AI API for feed ' . $feedId);
-            }
-
             return $entry;
         } catch (Exception $e) {
             Minz_Log::error('AiConverter: Unexpected error in processEntryWithAi - ' . $e->getMessage());
