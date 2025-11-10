@@ -315,9 +315,7 @@ class AiConverterExtension extends Minz_Extension {
                 // Check if feed is still enabled
                 if (!isset($feedConfigs[$feedId]) || !($feedConfigs[$feedId]['enabled'] ?? false)) {
                     $cleanContent = str_replace('<!--AI_PENDING-->', '', $content);
-                    $entryArray = $entry->toArray();
-                    $entryArray['content'] = $cleanContent;
-                    $entryDAO->updateEntry($entryArray);
+                    self::updateEntryWithRetry($entryDAO, $entry, $cleanContent);
                     continue;
                 }
 
@@ -341,15 +339,12 @@ class AiConverterExtension extends Minz_Extension {
                 $aiResponse = self::callAiApi($apiEndpoint, $apiToken, $model, $userMessage);
 
                 if ($aiResponse !== null) {
-                    $entryArray = $entry->toArray();
-                    $entryArray['content'] = $aiResponse;
-                    $entryDAO->updateEntry($entryArray);
-                    $processed++;
-                    Minz_Log::notice('AiConverter: Auto-processed entry ID ' . $entry->id());
+                    if (self::updateEntryWithRetry($entryDAO, $entry, $aiResponse)) {
+                        $processed++;
+                        Minz_Log::notice('AiConverter: Auto-processed entry ID ' . $entry->id());
+                    }
                 } else {
-                    $entryArray = $entry->toArray();
-                    $entryArray['content'] = $cleanContent;
-                    $entryDAO->updateEntry($entryArray);
+                    self::updateEntryWithRetry($entryDAO, $entry, $cleanContent);
                     Minz_Log::error('AiConverter: Failed to auto-process entry ID ' . $entry->id());
                 }
             }
@@ -439,9 +434,7 @@ class AiConverterExtension extends Minz_Extension {
                 // Check if feed is still enabled
                 if (!isset($feedConfigs[$feedId]) || !($feedConfigs[$feedId]['enabled'] ?? false)) {
                     $cleanContent = str_replace('<!--AI_PENDING-->', '', $content);
-                    $entryArray = $entry->toArray();
-                    $entryArray['content'] = $cleanContent;
-                    $entryDAO->updateEntry($entryArray);
+                    self::updateEntryWithRetry($entryDAO, $entry, $cleanContent);
                     continue;
                 }
 
@@ -465,16 +458,13 @@ class AiConverterExtension extends Minz_Extension {
                 $aiResponse = self::callAiApi($apiEndpoint, $apiToken, $model, $userMessage);
 
                 if ($aiResponse !== null) {
-                    $entryArray = $entry->toArray();
-                    $entryArray['content'] = $aiResponse;
-                    $entryDAO->updateEntry($entryArray);
-                    $processed++;
-                    Minz_Log::notice('AiConverter: Background processed entry ID ' . $entry->id());
+                    if (self::updateEntryWithRetry($entryDAO, $entry, $aiResponse)) {
+                        $processed++;
+                        Minz_Log::notice('AiConverter: Background processed entry ID ' . $entry->id());
+                    }
                 } else {
                     // Remove marker but keep original content on error
-                    $entryArray = $entry->toArray();
-                    $entryArray['content'] = $cleanContent;
-                    $entryDAO->updateEntry($entryArray);
+                    self::updateEntryWithRetry($entryDAO, $entry, $cleanContent);
                     Minz_Log::error('AiConverter: Failed to background process entry ID ' . $entry->id());
                 }
             }
@@ -498,6 +488,59 @@ class AiConverterExtension extends Minz_Extension {
      */
     public static function callAiApiPublic($endpoint, $token, $model, $message) {
         return self::callAiApi($endpoint, $token, $model, $message);
+    }
+
+    /**
+     * Public wrapper for updateEntryWithRetry to allow controller access
+     *
+     * @param FreshRSS_EntryDAO $entryDAO The entry DAO instance
+     * @param FreshRSS_Entry $entry The entry to update
+     * @param string $newContent The new content to set
+     * @return bool True on success, false on failure
+     */
+    public static function updateEntryWithRetryPublic($entryDAO, $entry, $newContent) {
+        return self::updateEntryWithRetry($entryDAO, $entry, $newContent);
+    }
+
+    /**
+     * Update entry with retry logic for database locks
+     *
+     * SQLite can experience "database is locked" errors during concurrent writes.
+     * This method retries the update operation with exponential backoff.
+     *
+     * @param FreshRSS_EntryDAO $entryDAO The entry DAO instance
+     * @param FreshRSS_Entry $entry The entry to update
+     * @param string $newContent The new content to set
+     * @param int $maxRetries Maximum number of retry attempts
+     * @return bool True on success, false on failure
+     */
+    private static function updateEntryWithRetry($entryDAO, $entry, $newContent, $maxRetries = 3) {
+        $entryArray = $entry->toArray();
+        $entryArray['content'] = $newContent;
+
+        for ($attempt = 0; $attempt < $maxRetries; $attempt++) {
+            try {
+                $result = $entryDAO->updateEntry($entryArray);
+                if ($result) {
+                    return true;
+                }
+            } catch (Exception $e) {
+                $errorMessage = $e->getMessage();
+                // Check if it's a database locked error
+                if (strpos($errorMessage, 'database is locked') !== false) {
+                    if ($attempt < $maxRetries - 1) {
+                        // Exponential backoff: 100ms, 200ms, 400ms
+                        $delay = (100000 * pow(2, $attempt)); // microseconds
+                        usleep($delay);
+                        Minz_Log::warning('AiConverter: Database locked, retrying in ' . ($delay / 1000) . 'ms (attempt ' . ($attempt + 1) . '/' . $maxRetries . ')');
+                        continue;
+                    }
+                }
+                Minz_Log::error('AiConverter: Failed to update entry - ' . $errorMessage);
+                return false;
+            }
+        }
+        return false;
     }
 
     /**
