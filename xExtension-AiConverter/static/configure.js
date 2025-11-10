@@ -55,7 +55,7 @@
     // Event delegation: Handle button clicks
     document.addEventListener('click', function (e) {
         // Handle "Reload Feed" button clicks
-        if (e.target.classList.contains('btn-reload-feed')) {
+        if (e.target.classList.contains('btn-reload-feed-aiconverter')) {
             var feedId = e.target.getAttribute('data-feed-id');
             reloadFeedBackend(feedId, e.target);
         }
