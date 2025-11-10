@@ -144,7 +144,8 @@ class FreshExtension_aiconverter_Controller extends Minz_ActionController {
                     continue;
                 }
 
-                $feedId = $entry->feed(false);
+                $feed = $entry->feed(false);
+                $feedId = is_object($feed) ? $feed->id() : $feed;
 
                 // Check if feed is still enabled
                 if (!isset($feedConfigs[$feedId]) || !($feedConfigs[$feedId]['enabled'] ?? false)) {
