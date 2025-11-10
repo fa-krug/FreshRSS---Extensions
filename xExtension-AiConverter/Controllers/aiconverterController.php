@@ -125,7 +125,7 @@ class FreshExtension_aiconverter_Controller extends Minz_ActionController {
 
             // Find entries with AI_PENDING marker
             $entryDAO = FreshRSS_Factory::createEntryDAO();
-            $pendingEntries = $entryDAO->listWhere('e', '', FreshRSS_Entry::STATE_ALL, 'DESC', $batchSize * 3);
+            $pendingEntries = $entryDAO->listWhere('e', 0, FreshRSS_Entry::STATE_ALL, 'DESC', $batchSize * 3);
 
             $processed = 0;
             $errors = 0;
@@ -218,7 +218,7 @@ class FreshExtension_aiconverter_Controller extends Minz_ActionController {
             }
 
             $entryDAO = FreshRSS_Factory::createEntryDAO();
-            $entries = $entryDAO->listWhere('e', '', FreshRSS_Entry::STATE_ALL, 'DESC', 1000);
+            $entries = $entryDAO->listWhere('e', 0, FreshRSS_Entry::STATE_ALL, 'DESC', 1000);
 
             $count = 0;
             foreach ($entries as $entry) {
