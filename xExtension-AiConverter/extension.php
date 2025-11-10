@@ -40,11 +40,16 @@ class AiConverterExtension extends Minz_Extension {
         if (Minz_Request::isPost()) {
             $data = array();
 
-            // Save global settings
-            $data['api_endpoint'] = Minz_Request::param('api_endpoint', 'https://api.openai.com/v1/chat/completions');
-            $data['api_token'] = Minz_Request::param('api_token', '');
-            $data['model'] = Minz_Request::param('model', 'gpt-4o-mini');
-            $data['default_prompt'] = Minz_Request::param('default_prompt', '');
+            // Save global settings (decode HTML entities to prevent double-encoding)
+            $apiEndpoint = Minz_Request::param('api_endpoint', 'https://api.openai.com/v1/chat/completions');
+            $apiToken = Minz_Request::param('api_token', '');
+            $model = Minz_Request::param('model', 'gpt-4o-mini');
+            $defaultPrompt = Minz_Request::param('default_prompt', '');
+
+            $data['api_endpoint'] = html_entity_decode($apiEndpoint, ENT_QUOTES, 'UTF-8');
+            $data['api_token'] = html_entity_decode($apiToken, ENT_QUOTES, 'UTF-8');
+            $data['model'] = $model; // Model is a select dropdown, no need to decode
+            $data['default_prompt'] = html_entity_decode($defaultPrompt, ENT_QUOTES, 'UTF-8');
 
             Minz_Log::notice('AiConverter: Saving global settings');
 

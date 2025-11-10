@@ -1,7 +1,9 @@
 <?php
 $config = FreshRSS_Context::$user_conf->aiconverter ?? array();
 $apiEndpoint = $config['api_endpoint'] ?? 'https://api.openai.com/v1/chat/completions';
+$apiEndpointDisplay = html_entity_decode($apiEndpoint, ENT_QUOTES, 'UTF-8');
 $apiToken = $config['api_token'] ?? '';
+$apiTokenDisplay = html_entity_decode($apiToken, ENT_QUOTES, 'UTF-8');
 $model = $config['model'] ?? 'gpt-4o-mini';
 $defaultPrompt = $config['default_prompt'] ?? 'Extract and reformat the main article content into clean HTML. Follow these rules strictly:
 
@@ -18,6 +20,7 @@ $defaultPrompt = $config['default_prompt'] ?? 'Extract and reformat the main art
 5. **Do NOT add**: Do not add any commentary, analysis, summaries, or content that is not part of the original article.
 
 Return ONLY the HTML output, nothing else.';
+$defaultPromptDisplay = html_entity_decode($defaultPrompt, ENT_QUOTES, 'UTF-8');
 
 $feedConfigs = $config['feed_configs'] ?? array();
 
@@ -36,7 +39,7 @@ $feeds = $feedDAO->listFeeds();
             <label class="group-name" for="api_endpoint">API Endpoint</label>
             <div class="group-controls">
                 <input type="text" id="api_endpoint" name="api_endpoint"
-                    value="<?php echo htmlspecialchars($apiEndpoint); ?>"
+                    value="<?php echo htmlspecialchars($apiEndpointDisplay); ?>"
                     placeholder="https://api.openai.com/v1/chat/completions"
                     style="width: 100%;">
                 <p class="help">OpenAI-compatible API endpoint (e.g., OpenAI, Azure OpenAI, LocalAI, Ollama with OpenAI compatibility layer)</p>
@@ -47,7 +50,7 @@ $feeds = $feedDAO->listFeeds();
             <label class="group-name" for="api_token">API Access Token</label>
             <div class="group-controls">
                 <input type="password" id="api_token" name="api_token"
-                    value="<?php echo htmlspecialchars($apiToken); ?>"
+                    value="<?php echo htmlspecialchars($apiTokenDisplay); ?>"
                     placeholder="sk-..."
                     style="width: 100%;">
                 <p class="help">Your API access token (kept secure, never logged)</p>
@@ -75,7 +78,7 @@ $feeds = $feedDAO->listFeeds();
                 <textarea id="default_prompt" name="default_prompt"
                     rows="10"
                     placeholder="Enter the default prompt for AI processing..."
-                    style="width: 100%; font-family: monospace;"><?php echo htmlspecialchars($defaultPrompt); ?></textarea>
+                    style="width: 100%; font-family: monospace;"><?php echo htmlspecialchars($defaultPromptDisplay); ?></textarea>
                 <p class="help">Default prompt used for all feeds unless overridden. The article content will be appended after this prompt.</p>
             </div>
         </div>
