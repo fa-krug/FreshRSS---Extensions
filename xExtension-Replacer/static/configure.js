@@ -124,7 +124,7 @@
                 button.disabled = false;
                 if (data.success) {
                     // Redirect to home page after successful reload
-                    window.location.replace('/');
+                    window.location.replace('/i/?get=f_' + feedId);
                 } else {
                     alert('Error: ' + (data.error || 'Failed to reload feed.'));
                 }
