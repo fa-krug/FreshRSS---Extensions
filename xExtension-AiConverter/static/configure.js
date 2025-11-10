@@ -38,9 +38,7 @@
             .then(function (response) { return response.json(); })
             .then(function (data) {
                 button.disabled = false;
-                button.textContent = 'Reload Feed';
                 if (data.success) {
-                    alert('Feed reloaded successfully! Redirecting to home page...');
                     // Redirect to home page after successful reload
                     window.location.replace('/');
                 } else {
