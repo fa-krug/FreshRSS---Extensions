@@ -175,9 +175,22 @@ class ReplacerExtension extends Minz_Extension {
                         $replaceString = str_replace('{feed_url}', self::$feedUrl, $replaceString);
                         $replaceString = str_replace('{title}', self::$feedTitle, $replaceString);
 
+                        // Log the rule being applied
+                        Minz_Log::debug('Replacer: Applying rule #' . ($ruleIndex + 1) . ' to feed ' . self::$feedId);
+                        Minz_Log::debug('Replacer: Search Regex: ' . $searchRegex);
+                        Minz_Log::debug('Replacer: Replace String: ' . $replaceString);
+
                         // Apply the regex replacement to content
+                        // Note: For multiline matching, users should include the 's' modifier in their pattern
+                        // e.g., /pattern/s or #pattern#s to make . match newlines
                         $contentBefore = $newContent;
-                        $newContent = preg_replace($searchRegex, $replaceString, $newContent);
+                        $newContent = @preg_replace($searchRegex, $replaceString, $newContent);
+
+                        // If preg_replace fails, log error and keep original content
+                        if ($newContent === null) {
+                            Minz_Log::error('Replacer: preg_replace failed for feed ' . self::$feedId . ' (rule #' . ($ruleIndex + 1) . ')');
+                            $newContent = $contentBefore;
+                        }
 
                         // Track if this rule actually changed the content
                         if ($contentBefore !== $newContent) {
