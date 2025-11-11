@@ -137,3 +137,4 @@ fabric.properties
 /fuel/app/config/crypt.php
 
 .idea
+.DS_Store
