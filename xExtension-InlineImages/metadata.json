@@ -1,0 +1,8 @@
+{
+  "name": "Inline Images",
+  "entrypoint": "InlineImages",
+  "author": "FreshRSS Community",
+  "description": "Downloads images from RSS entries, shrinks them, and embeds them as base64 inline images",
+  "version": "1.0.0",
+  "type": "user"
+}
