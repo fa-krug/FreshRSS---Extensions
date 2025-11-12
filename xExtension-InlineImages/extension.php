@@ -3,20 +3,10 @@
 /**
  * InlineImages Extension
  *
- * Downloads images from RSS entries, shrinks them, and embeds them as base64 inline images.
+ * Downloads images from RSS entries and embeds them as base64 inline images.
  * This reduces external requests and improves privacy.
  */
 class InlineImagesExtension extends Minz_Extension {
-
-    /**
-     * Maximum image dimensions (width and height)
-     */
-    private const MAX_IMAGE_SIZE = 800;
-
-    /**
-     * JPEG quality for compression (0-100)
-     */
-    private const JPEG_QUALITY = 85;
 
     /**
      * Maximum file size to process (in bytes) - 5MB
@@ -33,12 +23,6 @@ class InlineImagesExtension extends Minz_Extension {
      */
     public function init(): void {
         parent::init();
-
-        // Check if GD extension is available
-        if (!extension_loaded('gd')) {
-            Minz_Log::error('InlineImages: PHP GD extension is not installed. This extension requires GD for image processing.');
-            return;
-        }
 
         // Register translations
         $this->registerTranslates();
@@ -113,7 +97,7 @@ class InlineImagesExtension extends Minz_Extension {
     }
 
     /**
-     * Download image, shrink it, and convert to base64
+     * Download image and convert to base64
      *
      * @param string $url Image URL
      * @return string|null Base64 data URI or null on failure
@@ -153,81 +137,11 @@ class InlineImagesExtension extends Minz_Extension {
                 return null;
             }
 
-            // Create image resource from data
-            $image = @imagecreatefromstring($imageData);
-
-            if ($image === false) {
-                Minz_Log::warning('InlineImages: Failed to create image from data: ' . $url);
-                return null;
-            }
-
-            // Get original dimensions
-            $originalWidth = imagesx($image);
-            $originalHeight = imagesy($image);
-
-            // Calculate new dimensions (maintain aspect ratio)
-            $newWidth = $originalWidth;
-            $newHeight = $originalHeight;
-
-            if ($originalWidth > self::MAX_IMAGE_SIZE || $originalHeight > self::MAX_IMAGE_SIZE) {
-                if ($originalWidth > $originalHeight) {
-                    $newWidth = self::MAX_IMAGE_SIZE;
-                    $newHeight = (int)(($originalHeight / $originalWidth) * self::MAX_IMAGE_SIZE);
-                } else {
-                    $newHeight = self::MAX_IMAGE_SIZE;
-                    $newWidth = (int)(($originalWidth / $originalHeight) * self::MAX_IMAGE_SIZE);
-                }
-            }
-
-            // Create new image with calculated dimensions
-            $newImage = imagecreatetruecolor($newWidth, $newHeight);
-
-            // Preserve transparency for PNG and GIF
-            imagealphablending($newImage, false);
-            imagesavealpha($newImage, true);
-
-            // Resize image
-            imagecopyresampled(
-                $newImage,
-                $image,
-                0, 0, 0, 0,
-                $newWidth,
-                $newHeight,
-                $originalWidth,
-                $originalHeight
-            );
-
-            // Convert to base64
-            ob_start();
-
-            // Detect original format and use appropriate output function
+            // Detect MIME type
             $mimeType = $this->detectMimeType($imageData);
 
-            switch ($mimeType) {
-                case 'image/png':
-                    imagepng($newImage, null, 9); // Max compression
-                    break;
-                case 'image/gif':
-                    imagegif($newImage);
-                    break;
-                case 'image/webp':
-                    imagewebp($newImage, null, self::JPEG_QUALITY);
-                    break;
-                default:
-                    // Default to JPEG for other formats
-                    imagejpeg($newImage, null, self::JPEG_QUALITY);
-                    $mimeType = 'image/jpeg';
-                    break;
-            }
-
-            $outputData = ob_get_clean();
-
-            // Free memory
-            imagedestroy($image);
-            imagedestroy($newImage);
-
             // Convert to base64
-            $base64 = base64_encode($outputData);
+            $base64 = base64_encode($imageData);
 
             // Return data URI
             return 'data:' . $mimeType . ';base64,' . $base64;
