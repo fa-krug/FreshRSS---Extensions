@@ -22,6 +22,50 @@ This FreshRSS extension downloads images from RSS entries, shrinks them, and emb
 
 ## Installation
 
+### Prerequisites
+
+This extension requires the **PHP GD extension** to be installed.
+
+#### For Docker users:
+
+If you're running FreshRSS in Docker, you need to install the GD extension in your container. Add this to your Dockerfile or run it in your container:
+
+```bash
+# Install GD extension
+docker exec -it <your-freshrss-container> apk add --no-cache php83-gd
+
+# Or for Debian-based images:
+docker exec -it <your-freshrss-container> apt-get update && apt-get install -y php-gd
+
+# Restart the container
+docker restart <your-freshrss-container>
+```
+
+Or add to your `docker-compose.yml`:
+
+```yaml
+services:
+  freshrss:
+    image: freshrss/freshrss:latest
+    # ... other config ...
+    command: sh -c "apk add --no-cache php83-gd && /entrypoint.sh"
+```
+
+#### For standard PHP installations:
+
+```bash
+# Ubuntu/Debian
+sudo apt-get install php-gd
+
+# CentOS/RHEL
+sudo yum install php-gd
+
+# Check if installed
+php -m | grep gd
+```
+
+### Extension Installation
+
 1. Download or clone this repository into your FreshRSS `extensions` directory:
    ```bash
    cd /path/to/FreshRSS/extensions
@@ -33,6 +77,8 @@ This FreshRSS extension downloads images from RSS entries, shrinks them, and emb
 3. Find "Inline Images" in the extension list
 
 4. Click **Enable**
+
+   **Note:** If the extension shows an error about GD not being installed, check the logs and install the GD extension as described above.
 
 ## Configuration
 

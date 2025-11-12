@@ -34,6 +34,12 @@ class InlineImagesExtension extends Minz_Extension {
     public function init(): void {
         parent::init();
 
+        // Check if GD extension is available
+        if (!extension_loaded('gd')) {
+            Minz_Log::error('InlineImages: PHP GD extension is not installed. This extension requires GD for image processing.');
+            return;
+        }
+
         // Register translations
         $this->registerTranslates();
 
