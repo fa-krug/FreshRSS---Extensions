@@ -177,7 +177,7 @@ class InlineImagesExtension extends Minz_Extension {
             $enabledFeeds = [];
 
             foreach ($enabledFeedsRaw as $feedId => $enabled) {
-                if ($enabled === 'on') {
+                if ($enabled === '1') {
                     $enabledFeeds[(int)$feedId] = true;
                 }
             }
