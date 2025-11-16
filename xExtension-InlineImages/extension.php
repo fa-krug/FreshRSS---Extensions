@@ -131,23 +131,53 @@ class InlineImagesExtension extends Minz_Extension {
      */
     private function downloadAndConvertImage(string $url): ?string {
         try {
+            // Skip data URLs (already inline) - case-insensitive check
+            // PHP 7.4 compatible check (str_starts_with requires PHP 8.0+)
+            if (stripos($url, 'data:') === 0) {
+                Minz_Log::debug('InlineImages: Skipping data URL');
+                return null;
+            }
+
+            // Skip relative URLs (can't resolve without feed context)
+            if (substr($url, 0, 1) === '/' || substr($url, 0, 3) === '../' || substr($url, 0, 2) === './') {
+                Minz_Log::warning('InlineImages: Skipping relative URL (not supported): ' . $url);
+                return null;
+            }
+
+            // Handle protocol-relative URLs by adding https:
+            if (substr($url, 0, 2) === '//') {
+                $url = 'https:' . $url;
+                Minz_Log::debug('InlineImages: Converted protocol-relative URL to: ' . $url);
+            }
+
             // Validate URL
             if (!filter_var($url, FILTER_VALIDATE_URL)) {
-                Minz_Log::warning('InlineImages: Invalid URL: ' . $url);
+                Minz_Log::warning('InlineImages: Invalid URL format: ' . $url);
                 return null;
             }
 
-            // Skip data URLs (already inline)
-            // PHP 7.4 compatible check (str_starts_with requires PHP 8.0+)
-            if (substr($url, 0, 5) === 'data:') {
+            // Validate URL scheme (only http and https are supported)
+            $scheme = parse_url($url, PHP_URL_SCHEME);
+            if (!in_array(strtolower($scheme), ['http', 'https'])) {
+                Minz_Log::warning('InlineImages: Unsupported URL scheme: ' . $scheme);
                 return null;
             }
 
-            // Download image with timeout
+            // Download image with timeout (configure both http and https)
             $context = stream_context_create([
                 'http' => [
                     'timeout' => self::DOWNLOAD_TIMEOUT,
                     'user_agent' => 'FreshRSS/InlineImages',
+                    'follow_location' => true,
+                    'max_redirects' => 5,
+                ],
+                'https' => [
+                    'timeout' => self::DOWNLOAD_TIMEOUT,
+                    'user_agent' => 'FreshRSS/InlineImages',
+                    'follow_location' => true,
+                    'max_redirects' => 5,
+                    'verify_peer' => true,
+                    'verify_peer_name' => true,
                 ],
             ]);
 
@@ -167,6 +197,12 @@ class InlineImagesExtension extends Minz_Extension {
 
             // Detect MIME type
             $mimeType = $this->detectMimeType($imageData);
+
+            // Validate it's actually an image
+            if (substr($mimeType, 0, 6) !== 'image/') {
+                Minz_Log::warning('InlineImages: Downloaded content is not an image (MIME: ' . $mimeType . '): ' . $url);
+                return null;
+            }
 
             // Convert to base64
             $base64 = base64_encode($imageData);
