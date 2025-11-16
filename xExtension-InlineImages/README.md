@@ -101,6 +101,8 @@ Ensure:
 
 ### PHP Requirements
 
+- PHP 7.4 or higher
+
 Required PHP extensions:
 - Fileinfo (`php-fileinfo`) - for MIME type detection
 
@@ -151,6 +153,13 @@ This extension is provided as-is for use with FreshRSS.
 Contributions are welcome! Please feel free to submit issues or pull requests.
 
 ## Changelog
+
+### 1.0.1 (2025-11-16)
+- **Fixed**: Critical PHP 7.4 compatibility issue with `str_starts_with()` (requires PHP 8.0+)
+- **Fixed**: Improved regex pattern to handle empty src attributes and preserve quote styles
+- **Fixed**: Added comprehensive error handling to prevent image tags from disappearing on failures
+- **Fixed**: Added detailed logging for debugging image processing issues
+- **Improved**: Better preservation of original HTML when image processing fails
 
 ### 1.0.0 (2025-11-12)
 - Initial release

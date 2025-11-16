@@ -73,27 +73,54 @@ class InlineImagesExtension extends Minz_Extension {
      * @return string Modified HTML content
      */
     private function processImageTags(string $html): string {
-        // Find all img tags
-        $pattern = '/<img\s+([^>]*\s+)?src=["\']([^"\']+)["\']([^>]*)>/i';
+        try {
+            // Find all img tags - improved pattern to handle edge cases
+            $pattern = '/<img\s+([^>]*\s+)?src=(["\'])([^"\']*)\2([^>]*)>/i';
 
-        $html = preg_replace_callback($pattern, function($matches) {
-            $beforeSrc = $matches[1] ?? '';
-            $imageUrl = $matches[2];
-            $afterSrc = $matches[3] ?? '';
+            $result = preg_replace_callback($pattern, function($matches) {
+                try {
+                    $beforeSrc = $matches[1] ?? '';
+                    $quote = $matches[2];  // Preserve original quote style
+                    $imageUrl = $matches[3];
+                    $afterSrc = $matches[4] ?? '';
 
-            // Download and convert image
-            $base64Data = $this->downloadAndConvertImage($imageUrl);
+                    // Skip empty URLs
+                    if (empty($imageUrl)) {
+                        Minz_Log::debug('InlineImages: Skipping empty image URL');
+                        return $matches[0];
+                    }
 
-            if ($base64Data !== null) {
-                // Replace with inline base64 image
-                return '<img ' . $beforeSrc . 'src="' . $base64Data . '"' . $afterSrc . '>';
+                    // Download and convert image
+                    $base64Data = $this->downloadAndConvertImage($imageUrl);
+
+                    if ($base64Data !== null) {
+                        // Replace with inline base64 image
+                        Minz_Log::debug('InlineImages: Successfully converted image: ' . substr($imageUrl, 0, 100));
+                        return '<img ' . $beforeSrc . 'src=' . $quote . $base64Data . $quote . $afterSrc . '>';
+                    }
+
+                    // Return original if conversion failed
+                    Minz_Log::debug('InlineImages: Keeping original tag for: ' . substr($imageUrl, 0, 100));
+                    return $matches[0];
+                } catch (Exception $e) {
+                    // If callback fails, preserve original tag
+                    Minz_Log::error('InlineImages: Callback error for image tag: ' . $e->getMessage());
+                    return $matches[0];
+                }
+            }, $html);
+
+            // Return original HTML if preg_replace_callback failed
+            if ($result === null) {
+                Minz_Log::error('InlineImages: preg_replace_callback failed, preserving original HTML');
+                return $html;
             }
 
-            // Return original if conversion failed
-            return $matches[0];
-        }, $html);
-
-        return $html;
+            return $result;
+        } catch (Exception $e) {
+            // If entire processing fails, return original HTML
+            Minz_Log::error('InlineImages: Error processing image tags: ' . $e->getMessage());
+            return $html;
+        }
     }
 
     /**
@@ -111,7 +138,8 @@ class InlineImagesExtension extends Minz_Extension {
             }
 
             // Skip data URLs (already inline)
-            if (str_starts_with($url, 'data:')) {
+            // PHP 7.4 compatible check (str_starts_with requires PHP 8.0+)
+            if (substr($url, 0, 5) === 'data:') {
                 return null;
             }
 
