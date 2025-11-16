@@ -9,14 +9,14 @@
 class InlineImagesExtension extends Minz_Extension {
 
     /**
-     * Maximum file size to process (in bytes) - 5MB
+     * Maximum file size to process (in bytes) - 20MB
      */
-    private const MAX_FILE_SIZE = 5242880;
+    private const MAX_FILE_SIZE = 20971520;
 
     /**
      * Timeout for image downloads (seconds)
      */
-    private const DOWNLOAD_TIMEOUT = 10;
+    private const DOWNLOAD_TIMEOUT = 30;
 
     /**
      * Initialize the extension
@@ -73,27 +73,54 @@ class InlineImagesExtension extends Minz_Extension {
      * @return string Modified HTML content
      */
     private function processImageTags(string $html): string {
-        // Find all img tags
-        $pattern = '/<img\s+([^>]*\s+)?src=["\']([^"\']+)["\']([^>]*)>/i';
+        try {
+            // Find all img tags - improved pattern to handle edge cases
+            $pattern = '/<img\s+([^>]*\s+)?src=(["\'])([^"\']*)\2([^>]*)>/i';
 
-        $html = preg_replace_callback($pattern, function($matches) {
-            $beforeSrc = $matches[1] ?? '';
-            $imageUrl = $matches[2];
-            $afterSrc = $matches[3] ?? '';
+            $result = preg_replace_callback($pattern, function($matches) {
+                try {
+                    $beforeSrc = $matches[1] ?? '';
+                    $quote = $matches[2];  // Preserve original quote style
+                    $imageUrl = $matches[3];
+                    $afterSrc = $matches[4] ?? '';
 
-            // Download and convert image
-            $base64Data = $this->downloadAndConvertImage($imageUrl);
+                    // Skip empty URLs
+                    if (empty($imageUrl)) {
+                        Minz_Log::debug('InlineImages: Skipping empty image URL');
+                        return $matches[0];
+                    }
 
-            if ($base64Data !== null) {
-                // Replace with inline base64 image
-                return '<img ' . $beforeSrc . 'src="' . $base64Data . '"' . $afterSrc . '>';
+                    // Download and convert image
+                    $base64Data = $this->downloadAndConvertImage($imageUrl);
+
+                    if ($base64Data !== null) {
+                        // Replace with inline base64 image
+                        Minz_Log::debug('InlineImages: Successfully converted image: ' . substr($imageUrl, 0, 100));
+                        return '<img ' . $beforeSrc . 'src=' . $quote . $base64Data . $quote . $afterSrc . '>';
+                    }
+
+                    // Return original if conversion failed
+                    Minz_Log::debug('InlineImages: Keeping original tag for: ' . substr($imageUrl, 0, 100));
+                    return $matches[0];
+                } catch (Exception $e) {
+                    // If callback fails, preserve original tag
+                    Minz_Log::error('InlineImages: Callback error for image tag: ' . $e->getMessage());
+                    return $matches[0];
+                }
+            }, $html);
+
+            // Return original HTML if preg_replace_callback failed
+            if ($result === null) {
+                Minz_Log::error('InlineImages: preg_replace_callback failed, preserving original HTML');
+                return $html;
             }
 
-            // Return original if conversion failed
-            return $matches[0];
-        }, $html);
-
-        return $html;
+            return $result;
+        } catch (Exception $e) {
+            // If entire processing fails, return original HTML
+            Minz_Log::error('InlineImages: Error processing image tags: ' . $e->getMessage());
+            return $html;
+        }
     }
 
     /**
@@ -104,22 +131,53 @@ class InlineImagesExtension extends Minz_Extension {
      */
     private function downloadAndConvertImage(string $url): ?string {
         try {
+            // Skip data URLs (already inline) - case-insensitive check
+            // PHP 7.4 compatible check (str_starts_with requires PHP 8.0+)
+            if (stripos($url, 'data:') === 0) {
+                Minz_Log::debug('InlineImages: Skipping data URL');
+                return null;
+            }
+
+            // Skip relative URLs (can't resolve without feed context)
+            if (substr($url, 0, 1) === '/' || substr($url, 0, 3) === '../' || substr($url, 0, 2) === './') {
+                Minz_Log::warning('InlineImages: Skipping relative URL (not supported): ' . $url);
+                return null;
+            }
+
+            // Handle protocol-relative URLs by adding https:
+            if (substr($url, 0, 2) === '//') {
+                $url = 'https:' . $url;
+                Minz_Log::debug('InlineImages: Converted protocol-relative URL to: ' . $url);
+            }
+
             // Validate URL
             if (!filter_var($url, FILTER_VALIDATE_URL)) {
-                Minz_Log::warning('InlineImages: Invalid URL: ' . $url);
+                Minz_Log::warning('InlineImages: Invalid URL format: ' . $url);
                 return null;
             }
 
-            // Skip data URLs (already inline)
-            if (str_starts_with($url, 'data:')) {
+            // Validate URL scheme (only http and https are supported)
+            $scheme = parse_url($url, PHP_URL_SCHEME);
+            if (!in_array(strtolower($scheme), ['http', 'https'])) {
+                Minz_Log::warning('InlineImages: Unsupported URL scheme: ' . $scheme);
                 return null;
             }
 
-            // Download image with timeout
+            // Download image with timeout (configure both http and https)
             $context = stream_context_create([
                 'http' => [
                     'timeout' => self::DOWNLOAD_TIMEOUT,
                     'user_agent' => 'FreshRSS/InlineImages',
+                    'follow_location' => true,
+                    'max_redirects' => 5,
+                ],
+                'https' => [
+                    'timeout' => self::DOWNLOAD_TIMEOUT,
+                    'user_agent' => 'FreshRSS/InlineImages',
+                    'follow_location' => true,
+                    'max_redirects' => 5,
+                    'verify_peer' => true,
+                    'verify_peer_name' => true,
                 ],
             ]);
 
@@ -139,6 +197,12 @@ class InlineImagesExtension extends Minz_Extension {
 
             // Detect MIME type
             $mimeType = $this->detectMimeType($imageData);
+
+            // Validate it's actually an image
+            if (substr($mimeType, 0, 6) !== 'image/') {
+                Minz_Log::warning('InlineImages: Downloaded content is not an image (MIME: ' . $mimeType . '): ' . $url);
+                return null;
+            }
 
             // Convert to base64
             $base64 = base64_encode($imageData);

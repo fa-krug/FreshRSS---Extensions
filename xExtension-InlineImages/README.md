@@ -14,8 +14,12 @@ This FreshRSS extension downloads images from RSS entries and embeds them as bas
 - ✅ Per-feed enable/disable configuration
 - ✅ Automatic image downloading during entry insertion
 - ✅ Support for PNG, JPEG, GIF, and WebP formats
-- ✅ Configurable timeout (10s) and file size limits (5MB)
-- ✅ Error handling and logging
+- ✅ Configurable timeout (30s) and file size limits (20MB)
+- ✅ Comprehensive error handling and logging
+- ✅ Protocol-relative URL support (`//example.com/image.jpg`)
+- ✅ MIME type validation (rejects non-image content)
+- ✅ HTTPS support with SSL/TLS verification
+- ✅ Automatic redirect following (up to 5 redirects)
 - ✅ No external dependencies required (works out of the box)
 
 ## Installation
@@ -46,8 +50,8 @@ This FreshRSS extension downloads images from RSS entries and embeds them as bas
 
 ### Settings
 
-- **Download Timeout**: 10 seconds
-- **Maximum File Size**: 5 MB
+- **Download Timeout**: 30 seconds
+- **Maximum File Size**: 20 MB
 
 ### How It Works
 
@@ -65,6 +69,14 @@ This FreshRSS extension downloads images from RSS entries and embeds them as bas
 - PNG
 - GIF
 - WebP
+- Any format supported by PHP's fileinfo extension
+
+### Supported URL Types
+
+- ✅ Absolute URLs: `http://example.com/image.jpg`, `https://example.com/image.jpg`
+- ✅ Protocol-relative URLs: `//example.com/image.jpg` (automatically converted to HTTPS)
+- ✅ Data URLs: `data:image/png;base64,...` (skipped, already inline)
+- ❌ Relative paths: `/images/foo.jpg`, `../images/foo.jpg` (not supported - requires feed URL context)
 
 ### Hook Used
 
@@ -88,9 +100,12 @@ tail -f data/users/_/log.txt
 
 Common issues:
 - Image URL is invalid or unreachable
-- Image file size exceeds 5 MB
-- Download timeout (server too slow)
+- Image file size exceeds 20 MB
+- Download timeout (server too slow - timeout is 30 seconds)
 - Insufficient PHP memory
+- Downloaded content is not an image (HTML page, text file, etc.)
+- Relative URLs in RSS feed (not supported - images must be absolute URLs)
+- SSL/TLS certificate verification issues (check server certificates)
 
 ### Extension Not Appearing
 
@@ -100,6 +115,8 @@ Ensure:
 - PHP has read permissions for the directory
 
 ### PHP Requirements
+
+- PHP 7.4 or higher
 
 Required PHP extensions:
 - Fileinfo (`php-fileinfo`) - for MIME type detection
@@ -151,6 +168,23 @@ This extension is provided as-is for use with FreshRSS.
 Contributions are welcome! Please feel free to submit issues or pull requests.
 
 ## Changelog
+
+### 1.0.1 (2025-11-16)
+- **Fixed**: Critical PHP 7.4 compatibility issue with `str_starts_with()` (requires PHP 8.0+)
+- **Fixed**: Improved regex pattern to handle empty src attributes and preserve quote styles
+- **Fixed**: Added comprehensive error handling to prevent image tags from disappearing on failures
+- **Fixed**: Case-insensitive data URL detection (now handles `DATA:`, `Data:`, etc.)
+- **Fixed**: HTTPS context not configured (only HTTP settings were applied)
+- **Added**: Protocol-relative URL support (`//example.com/image.jpg` converted to HTTPS)
+- **Added**: MIME type validation - rejects non-image content (HTML, text, etc.)
+- **Added**: URL scheme validation - only http/https allowed
+- **Added**: Automatic redirect following (up to 5 redirects)
+- **Added**: SSL/TLS certificate verification for HTTPS
+- **Added**: Detailed logging for debugging image processing issues
+- **Improved**: Better preservation of original HTML when image processing fails
+- **Improved**: More informative warning messages for unsupported URL types (relative paths)
+- **Changed**: Increased download timeout from 10s to 30s for slower servers
+- **Changed**: Increased maximum file size from 5MB to 20MB for high-resolution images
 
 ### 1.0.0 (2025-11-12)
 - Initial release
