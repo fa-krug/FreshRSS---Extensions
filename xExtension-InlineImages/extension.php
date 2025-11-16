@@ -9,14 +9,14 @@
 class InlineImagesExtension extends Minz_Extension {
 
     /**
-     * Maximum file size to process (in bytes) - 5MB
+     * Maximum file size to process (in bytes) - 20MB
      */
-    private const MAX_FILE_SIZE = 5242880;
+    private const MAX_FILE_SIZE = 20971520;
 
     /**
      * Timeout for image downloads (seconds)
      */
-    private const DOWNLOAD_TIMEOUT = 10;
+    private const DOWNLOAD_TIMEOUT = 30;
 
     /**
      * Initialize the extension
