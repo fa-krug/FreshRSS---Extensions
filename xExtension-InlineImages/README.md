@@ -14,7 +14,7 @@ This FreshRSS extension downloads images from RSS entries and embeds them as bas
 - ✅ Per-feed enable/disable configuration
 - ✅ Automatic image downloading during entry insertion
 - ✅ Support for PNG, JPEG, GIF, and WebP formats
-- ✅ Configurable timeout (30s) and file size limits (20MB)
+- ✅ Configurable timeout (30s) and file size limits (7MB)
 - ✅ Comprehensive error handling and logging
 - ✅ Protocol-relative URL support (`//example.com/image.jpg`)
 - ✅ MIME type validation (rejects non-image content)
@@ -51,7 +51,7 @@ This FreshRSS extension downloads images from RSS entries and embeds them as bas
 ### Settings
 
 - **Download Timeout**: 30 seconds
-- **Maximum File Size**: 20 MB
+- **Maximum File Size**: 7 MB
 
 ### How It Works
 
@@ -100,7 +100,7 @@ tail -f data/users/_/log.txt
 
 Common issues:
 - Image URL is invalid or unreachable
-- Image file size exceeds 20 MB
+- Image file size exceeds 7 MB
 - Download timeout (server too slow - timeout is 30 seconds)
 - Insufficient PHP memory
 - Downloaded content is not an image (HTML page, text file, etc.)
@@ -184,7 +184,7 @@ Contributions are welcome! Please feel free to submit issues or pull requests.
 - **Improved**: Better preservation of original HTML when image processing fails
 - **Improved**: More informative warning messages for unsupported URL types (relative paths)
 - **Changed**: Increased download timeout from 10s to 30s for slower servers
-- **Changed**: Increased maximum file size from 5MB to 20MB for high-resolution images
+- **Changed**: Increased maximum file size from 5MB to 7MB to balance image quality with database size
 
 ### 1.0.0 (2025-11-12)
 - Initial release
